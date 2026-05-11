@@ -17,6 +17,9 @@ When **Steamless Mode** is active, the app disables the controller's built-in ke
 - Settings persist across restarts
 - Single-instance guard — safe to leave running
 
+<img width="482" height="302" alt="image" src="https://github.com/user-attachments/assets/62e274a5-9d23-4af2-aaca-0f3ecdca3feb" />
+
+
 ## Requirements
 
 ### To run
