@@ -32,17 +32,30 @@ static void BuildCmd(uint8_t (&buf)[64], uint8_t cmd,
 // ---------------------------------------------------------------------------
 
 bool SteamController::Open() {
-    auto paths = HidDevice::Enumerate(VALVE_VID, SC2026_PID, VENDOR_USAGE_PAGE);
-    if (paths.empty()) {
-        printf("No Steam Controller found (VID=%04X PID=%04X UsagePage=%04X).\n",
-               VALVE_VID, SC2026_PID, VENDOR_USAGE_PAGE);
-        return false;
+    for (uint16_t pid : { SC2026_PID, SC2026_DONGLE_PID }) {
+        auto paths = HidDevice::Enumerate(VALVE_VID, pid, VENDOR_USAGE_PAGE);
+        if (paths.empty()) continue;
+
+        // For the wired controller there is only one interface; for the dongle
+        // there are up to four slots (one per paired controller). Try each in
+        // order and use the first that produces a live input report.
+        for (auto const& path : paths) {
+            if (!m_device.Open(path)) continue;
+
+            uint8_t buf[64];
+            size_t n = m_device.ReadInputReport(buf, sizeof(buf), /*timeoutMs=*/500);
+            if (n > 0 && buf[0] == REPORT_STATE) {
+                printf("Active interface found for PID=%04X.\n", pid);
+                return true;
+            }
+
+            m_device.Close();
+        }
     }
 
-    printf("Found %zu interface(s). Opening: ", paths.size());
-    wprintf(L"%s\n", paths[0].c_str());
-
-    return m_device.Open(paths[0]);
+    printf("No Steam Controller found (wired PID=%04X or dongle PID=%04X).\n",
+           SC2026_PID, SC2026_DONGLE_PID);
+    return false;
 }
 
 void SteamController::Close() {
