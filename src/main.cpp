@@ -1,8 +1,11 @@
 #include <Windows.h>
+#include <hidsdi.h>
+#include <hidpi.h>
 #include <csignal>
 #include <cstdio>
 #include <cstring>
 #include <climits>
+#include "hid/HidDevice.h"
 #include "steam/SteamController.h"
 
 static SteamController* g_controller = nullptr;
@@ -122,12 +125,53 @@ static void PrintState42Diff(const uint8_t* buf, size_t n) {
 // main
 // ---------------------------------------------------------------------------
 
+static void EnumerateAllValveDevices() {
+    printf("=== All Valve HID interfaces (VID=28DE) ===\n");
+    auto paths = HidDevice::Enumerate(SteamController::VALVE_VID, 0);
+    if (paths.empty()) {
+        printf("  None found.\n\n");
+        return;
+    }
+
+    for (auto const& path : paths) {
+        HANDLE h = CreateFileW(path.c_str(), 0,
+                               FILE_SHARE_READ | FILE_SHARE_WRITE,
+                               nullptr, OPEN_EXISTING, 0, nullptr);
+        if (h == INVALID_HANDLE_VALUE) continue;
+
+        HIDD_ATTRIBUTES attrs{};
+        attrs.Size = sizeof(attrs);
+        HidD_GetAttributes(h, &attrs);
+
+        wchar_t productBuf[128] = L"(unknown)";
+        HidD_GetProductString(h, productBuf, sizeof(productBuf));
+
+        uint16_t usagePage = 0, usage = 0;
+        PHIDP_PREPARSED_DATA preparsed;
+        if (HidD_GetPreparsedData(h, &preparsed)) {
+            HIDP_CAPS caps{};
+            if (HidP_GetCaps(preparsed, &caps) == HIDP_STATUS_SUCCESS) {
+                usagePage = caps.UsagePage;
+                usage     = caps.Usage;
+            }
+            HidD_FreePreparsedData(preparsed);
+        }
+
+        printf("  PID=%04X  UsagePage=%04X  Usage=%04X  \"%ls\"\n",
+               attrs.ProductID, usagePage, usage, productBuf);
+        CloseHandle(h);
+    }
+    printf("\n");
+}
+
 int main() {
     signal(SIGINT,  OnSignal);
     signal(SIGTERM, OnSignal);
 
     printf("=== SteamProbe — 2026 Steam Controller (VID=28DE PID=1302) ===\n\n");
     printf("NOTE: Close Steam before running this tool.\n\n");
+
+    EnumerateAllValveDevices();
 
     SteamController controller;
     g_controller = &controller;

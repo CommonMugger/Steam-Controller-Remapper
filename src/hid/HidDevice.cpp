@@ -49,8 +49,8 @@ std::vector<std::wstring> HidDevice::Enumerate(uint16_t vid, uint16_t pid, uint1
         HIDD_ATTRIBUTES attrs{};
         attrs.Size = sizeof(attrs);
         bool match = HidD_GetAttributes(h, &attrs)
-                  && attrs.VendorID  == vid
-                  && attrs.ProductID == pid;
+                  && attrs.VendorID == vid
+                  && (pid == 0 || attrs.ProductID == pid);
 
         if (match && usagePage != 0) {
             PHIDP_PREPARSED_DATA preparsed;
