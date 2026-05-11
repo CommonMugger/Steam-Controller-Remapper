@@ -1,0 +1,4 @@
+#include "resource.h"
+
+IDI_ICON_OFF  ICON  "SteamControllerOFF.ico"
+IDI_ICON_ON   ICON  "SteamControllerON.ico"

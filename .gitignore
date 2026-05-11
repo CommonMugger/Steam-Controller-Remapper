@@ -1,0 +1,25 @@
+# Build output
+build/
+
+# Loose binaries committed by mistake
+*.exe
+*.dll
+*.lib
+*.pdb
+
+# Claude Code local settings
+.claude/
+
+# Reverse engineering session data
+Results/
+HIDInfo
+HIDReportDescriptor.rtf
+
+# CMake user files
+CMakeSettings.json
+CMakeUserPresets.json
+
+# Visual Studio
+.vs/
+*.user
+*.suo
