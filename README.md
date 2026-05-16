@@ -4,6 +4,8 @@ A lightweight Windows system tray app that lets you use a **Steam Controller** a
 
 This fork exists to make the original project reliable in **Xbox Mode**. It focuses on boot-time controller recovery, delayed HID availability after reboot, and clean handoff back to Steam Input when `steam.exe` launches.
 
+**Important:** for Xbox Mode startup to work reliably, Windows Startup Apps must be set to **System startup**, not **Desktop startup**, for `Xbox Mode Steamless Controller`.
+
 <img width="261" height="194" alt="image" src="https://github.com/user-attachments/assets/8e4a1355-d854-4b67-a486-590d225700f5" />
 
 When **Steamless Mode** is active, the app disables the controller's built-in keyboard/mouse emulation (lizard mode) and exposes it as a virtual Xbox 360 controller via [ViGEmBus](https://github.com/nefarius/ViGEmBus), making it compatible with any game that supports XInput or the Xbox controller.
@@ -34,6 +36,22 @@ By default, the tray app automatically enables Steamless Mode when the controlle
 - Steam Controller (VID `0x28DE` / PID `0x1302`)
 - Steam may be running, but Steamless Mode will stay off until `steam.exe` exits
 
+## Xbox Mode Startup Setup
+
+**Important:** after installing or launching the app for the first time, open Windows Startup Apps settings and switch `Xbox Mode Steamless Controller` to **System startup**. If it stays on **Desktop startup**, the app may work on the normal desktop but fail to start correctly in Xbox Mode.
+
+### Step by Step
+
+1. Open **Settings** in Windows.
+2. Go to **Apps**.
+3. Open **Startup**.
+4. Find **Xbox Mode Steamless Controller** in the startup app list.
+5. Open its startup options.
+6. Change the startup mode from **Desktop startup** to **System startup**.
+7. Reboot and test Xbox Mode again.
+
+If you do not see the app in the list yet, launch `Xbox Mode Steamless Controller` once, then return to **Settings > Apps > Startup** and change it there.
+
 ### To build
 - [Visual Studio 2022](https://visualstudio.microsoft.com/) with the **Desktop development with C++** workload
 - [CMake](https://cmake.org/download/) 3.20 or later
@@ -42,8 +60,8 @@ By default, the tray app automatically enables Steamless Mode when the controlle
 ## Building
 
 ```bat
-git clone https://github.com/CommonMugger/SteamlessController.git
-cd SteamlessController
+git clone https://github.com/CommonMugger/Xbox-Mode-Steamless-Controller.git
+cd Xbox-Mode-Steamless-Controller
 cmake -B build
 cmake --build build --target SteamlessController
 ```
