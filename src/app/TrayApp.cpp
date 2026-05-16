@@ -136,6 +136,12 @@ LRESULT TrayApp::HandleMessage(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
     case WM_TIMER:
         if (wp == TIMER_STEAM_POLL) {
+            // Retry controller discovery on the timer as well. On cold boot the
+            // first open attempt can race HID initialization, and there may be
+            // no later arrival event if the controller was already present.
+            m_controller->OnDeviceChange();
+            ReconcileAutoMode();
+
             bool steamRunning = IsSteamRunning();
             if (steamRunning != m_steamRunning) {
                 m_steamRunning = steamRunning;

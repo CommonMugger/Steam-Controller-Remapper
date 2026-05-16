@@ -1,5 +1,6 @@
 #include "ControllerManager.h"
 #include "VirtualController.h"
+#include "logging/Log.h"
 #include "steam/SteamController.h"
 #include <memory>
 
@@ -8,6 +9,7 @@ static std::unique_ptr<SteamController> g_ctrl;
 ControllerManager::ControllerManager(StateChangedFn onStateChanged)
     : m_onStateChanged(std::move(onStateChanged))
 {
+    logging::Logf("[ControllerManager] ctor");
     TryOpen();
 }
 
@@ -16,6 +18,8 @@ ControllerManager::~ControllerManager() {
 }
 
 void ControllerManager::OnDeviceChange() {
+    logging::Logf("[ControllerManager] OnDeviceChange connected=%d gameMode=%d",
+                  m_connected ? 1 : 0, m_gameModeActive ? 1 : 0);
     if (!m_connected)
         TryOpen();
     else if (g_ctrl && !g_ctrl->IsOpen())
@@ -23,12 +27,19 @@ void ControllerManager::OnDeviceChange() {
 }
 
 void ControllerManager::EnableGameMode() {
+    logging::Logf("[ControllerManager] EnableGameMode connected=%d active=%d",
+                  m_connected ? 1 : 0, m_gameModeActive ? 1 : 0);
     if (!m_connected || m_gameModeActive) return;
-    if (!g_ctrl->DisableLizardMode()) return;
+    if (!g_ctrl->DisableLizardMode()) {
+        logging::Logf("[ControllerManager] EnableGameMode failed at DisableLizardMode");
+        return;
+    }
 
     m_virtual = std::make_unique<VirtualController>();
     if (!m_virtual->IsValid()) {
         bool missing = m_virtual->IsDriverMissing();
+        logging::Logf("[ControllerManager] EnableGameMode failed at VirtualController valid=0 missing=%d",
+                      missing ? 1 : 0);
         m_virtual.reset();
         g_ctrl->EnableLizardMode();
         if (missing) m_onStateChanged(m_connected, m_gameModeActive, /*vigemMissing=*/true);
@@ -41,10 +52,12 @@ void ControllerManager::EnableGameMode() {
     m_trackpad.SetBackButtonsEnabled(m_backButtonsEnabled);
     m_trackpad.SetUseLeftTrackpad(m_useLeftTrackpad);
     StartReadLoop();
+    logging::Logf("[ControllerManager] EnableGameMode success");
     m_onStateChanged(m_connected, m_gameModeActive, false);
 }
 
 void ControllerManager::DisableGameMode() {
+    logging::Logf("[ControllerManager] DisableGameMode active=%d", m_gameModeActive ? 1 : 0);
     if (!m_gameModeActive) return;
     StopReadLoop();
     m_trackpad.Reset();
@@ -70,10 +83,14 @@ void ControllerManager::SetUseLeftTrackpad(bool enabled) {
 }
 
 void ControllerManager::TryOpen() {
+    logging::Logf("[ControllerManager] TryOpen");
     if (!g_ctrl) g_ctrl = std::make_unique<SteamController>();
     if (g_ctrl->Open()) {
         m_connected = true;
+        logging::Logf("[ControllerManager] TryOpen success");
         m_onStateChanged(m_connected, m_gameModeActive, false);
+    } else {
+        logging::Logf("[ControllerManager] TryOpen failed");
     }
 }
 

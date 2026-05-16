@@ -1,4 +1,5 @@
 #include "VirtualController.h"
+#include "logging/Log.h"
 #include "steam/SteamController.h"
 #include <ViGEmClient.h>
 #include <cstdio>
@@ -64,11 +65,17 @@ static XUSB_REPORT Translate(const uint8_t* buf, size_t n) {
 // ---------------------------------------------------------------------------
 
 VirtualController::VirtualController() {
+    logging::Logf("[ViGEm] VirtualController ctor");
     m_client = vigem_alloc();
-    if (!m_client) { printf("[ViGEm] alloc failed\n"); return; }
+    if (!m_client) {
+        printf("[ViGEm] alloc failed\n");
+        logging::Logf("[ViGEm] alloc failed");
+        return;
+    }
 
     VIGEM_ERROR err = vigem_connect(static_cast<PVIGEM_CLIENT>(m_client));
     if (!VIGEM_SUCCESS(err)) {
+        logging::Logf("[ViGEm] connect failed err=0x%08X", err);
         if (err == VIGEM_ERROR_BUS_NOT_FOUND || err == VIGEM_ERROR_BUS_ACCESS_FAILED)
             m_driverMissing = true;
         vigem_free(static_cast<PVIGEM_CLIENT>(m_client));
@@ -77,22 +84,29 @@ VirtualController::VirtualController() {
     }
 
     m_target = vigem_target_x360_alloc();
-    if (!m_target) { printf("[ViGEm] target alloc failed\n"); return; }
+    if (!m_target) {
+        printf("[ViGEm] target alloc failed\n");
+        logging::Logf("[ViGEm] target alloc failed");
+        return;
+    }
 
     err = vigem_target_add(static_cast<PVIGEM_CLIENT>(m_client),
                            static_cast<PVIGEM_TARGET>(m_target));
     if (!VIGEM_SUCCESS(err)) {
         printf("[ViGEm] target_add failed: 0x%08X\n", err);
+        logging::Logf("[ViGEm] target_add failed err=0x%08X", err);
         vigem_target_free(static_cast<PVIGEM_TARGET>(m_target));
         m_target = nullptr;
         return;
     }
 
     printf("[ViGEm] Virtual Xbox 360 controller connected\n");
+    logging::Logf("[ViGEm] Virtual Xbox 360 controller connected");
     m_valid = true;
 }
 
 VirtualController::~VirtualController() {
+    logging::Logf("[ViGEm] VirtualController dtor valid=%d", m_valid ? 1 : 0);
     if (m_client && m_target) {
         vigem_target_remove(static_cast<PVIGEM_CLIENT>(m_client),
                             static_cast<PVIGEM_TARGET>(m_target));

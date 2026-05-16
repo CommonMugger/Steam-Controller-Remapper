@@ -1,4 +1,5 @@
 #include "SteamController.h"
+#include "logging/Log.h"
 #include <chrono>
 #include <cstdio>
 #include <cstring>
@@ -32,22 +33,31 @@ static void BuildCmd(uint8_t (&buf)[64], uint8_t cmd,
 // ---------------------------------------------------------------------------
 
 bool SteamController::Open() {
+    logging::Logf("[SteamController] Open begin");
     for (uint16_t pid : { SC2026_PID, SC2026_DONGLE_PID }) {
         auto paths = HidDevice::Enumerate(VALVE_VID, pid, VENDOR_USAGE_PAGE);
+        logging::Logf("[SteamController] Enumerate pid=%04X paths=%zu", pid, paths.size());
         if (paths.empty()) continue;
 
         // For the wired controller there is only one interface; for the dongle
         // there are up to four slots (one per paired controller). Try each in
         // order and use the first that produces a live input report.
         for (auto const& path : paths) {
+            logging::Logf("[SteamController] Trying path pid=%04X path=%s",
+                          pid, logging::Narrow(path).c_str());
             if (!m_device.Open(path)) continue;
 
             uint8_t buf[64];
             size_t n = m_device.ReadInputReport(buf, sizeof(buf), /*timeoutMs=*/500);
             if (n > 0 && buf[0] == REPORT_STATE) {
                 printf("Active interface found for PID=%04X.\n", pid);
+                logging::Logf("[SteamController] Active interface pid=%04X reportBytes=%zu reportId=0x%02X",
+                              pid, n, buf[0]);
                 return true;
             }
+
+            logging::Logf("[SteamController] Path rejected pid=%04X reportBytes=%zu reportId=0x%02X",
+                          pid, n, n > 0 ? buf[0] : 0);
 
             m_device.Close();
         }
@@ -55,10 +65,12 @@ bool SteamController::Open() {
 
     printf("No Steam Controller found (wired PID=%04X or dongle PID=%04X).\n",
            SC2026_PID, SC2026_DONGLE_PID);
+    logging::Logf("[SteamController] Open failed");
     return false;
 }
 
 void SteamController::Close() {
+    logging::Logf("[SteamController] Close");
     if (m_running.exchange(false) && m_heartbeat.joinable())
         m_heartbeat.join();
     m_device.Close();
@@ -70,11 +82,13 @@ void SteamController::Close() {
 
 bool SteamController::DisableLizardMode() {
     uint8_t buf[64];
+    logging::Logf("[SteamController] DisableLizardMode begin");
 
     // Step 1: CLEAR_DIGITAL_MAPPINGS — kills keyboard/mouse button emulation.
     BuildCmd(buf, CMD_CLEAR_DIGITAL_MAPPINGS);
     if (!m_device.SendFeatureReport(buf, sizeof(buf))) {
         printf("Failed to send CLEAR_DIGITAL_MAPPINGS.\n");
+        logging::Logf("[SteamController] DisableLizardMode failed step=CLEAR_DIGITAL_MAPPINGS");
         return false;
     }
 
@@ -87,22 +101,27 @@ bool SteamController::DisableLizardMode() {
     BuildCmd(buf, CMD_SET_SETTINGS, settingsPayload, sizeof(settingsPayload));
     if (!m_device.SendFeatureReport(buf, sizeof(buf))) {
         printf("Failed to send SET_SETTINGS_VALUES.\n");
+        logging::Logf("[SteamController] DisableLizardMode failed step=SET_SETTINGS");
         return false;
     }
 
     if (!m_running.exchange(true))
         m_heartbeat = std::thread(&SteamController::HeartbeatLoop, this);
 
+    logging::Logf("[SteamController] DisableLizardMode success");
     return true;
 }
 
 bool SteamController::EnableLizardMode() {
+    logging::Logf("[SteamController] EnableLizardMode begin");
     if (m_running.exchange(false) && m_heartbeat.joinable())
         m_heartbeat.join();
 
     uint8_t buf[64];
     BuildCmd(buf, CMD_SET_DEFAULT_MAPPINGS);
-    return m_device.SendFeatureReport(buf, sizeof(buf));
+    bool ok = m_device.SendFeatureReport(buf, sizeof(buf));
+    logging::Logf("[SteamController] EnableLizardMode %s", ok ? "success" : "failed");
+    return ok;
 }
 
 // ---------------------------------------------------------------------------
@@ -121,9 +140,12 @@ size_t SteamController::ReadReport(uint8_t* buffer, size_t size, uint32_t timeou
 void SteamController::HeartbeatLoop() {
     uint8_t buf[64];
     BuildCmd(buf, CMD_CLEAR_DIGITAL_MAPPINGS);
+    logging::Logf("[SteamController] Heartbeat start");
 
     while (m_running.load()) {
         m_device.SendFeatureReport(buf, sizeof(buf));
         std::this_thread::sleep_for(std::chrono::milliseconds(800));
     }
+
+    logging::Logf("[SteamController] Heartbeat stop");
 }

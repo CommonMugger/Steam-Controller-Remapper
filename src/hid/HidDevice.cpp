@@ -8,6 +8,7 @@
 #include <memory>
 #include <vector>
 #include "HidDevice.h"
+#include "logging/Log.h"
 
 // ---------------------------------------------------------------------------
 // Enumeration
@@ -102,6 +103,7 @@ HidDevice& HidDevice::operator=(HidDevice&& o) noexcept {
 
 bool HidDevice::Open(const std::wstring& path) {
     Close();
+    logging::Logf("[HidDevice] Open path=%s", logging::Narrow(path).c_str());
 
     // FILE_SHARE_READ | FILE_SHARE_WRITE lets us coexist with Steam's open handle.
     // Remove the share flags for exclusive access (Steam must be closed first).
@@ -115,6 +117,7 @@ bool HidDevice::Open(const std::wstring& path) {
 
     if (m_handle == INVALID_HANDLE_VALUE) {
         wprintf(L"CreateFileW failed for %s: error %lu\n", path.c_str(), GetLastError());
+        logging::Logf("[HidDevice] Open failed error=%lu", GetLastError());
         return false;
     }
 
@@ -122,6 +125,7 @@ bool HidDevice::Open(const std::wstring& path) {
     if (m_event == INVALID_HANDLE_VALUE) {
         CloseHandle(m_handle);
         m_handle = INVALID_HANDLE_VALUE;
+        logging::Logf("[HidDevice] CreateEvent failed error=%lu", GetLastError());
         return false;
     }
 
@@ -136,6 +140,8 @@ bool HidDevice::Open(const std::wstring& path) {
         }
         HidD_FreePreparsedData(preparsed);
     }
+    logging::Logf("[HidDevice] Open success outputLen=%lu featureLen=%lu",
+                  m_outputReportLen, m_featureReportLen);
     return true;
 }
 
@@ -184,6 +190,10 @@ bool HidDevice::SendFeatureReport(const uint8_t* data, size_t size) {
     if (!ok)
         printf("SendFeatureReport(reportId=0x%02X cmd=0x%02X) failed: error %lu\n",
                buf[0], buf[1], GetLastError());
+    if (!ok) {
+        logging::Logf("[HidDevice] SendFeatureReport failed reportId=0x%02X cmd=0x%02X error=%lu featureLen=%lu",
+                      buf[0], buf[1], GetLastError(), m_featureReportLen);
+    }
     return ok == TRUE;
 }
 
