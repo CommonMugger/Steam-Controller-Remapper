@@ -52,11 +52,15 @@ add_executable(SteamlessController WIN32
     src/app/TrayApp.cpp
     src/app/ControllerManager.cpp
     src/app/VirtualController.cpp
+    src/app/PaddleOverlay.cpp
+    src/app/PaddleConfig.cpp
+    src/app/PaddleConfigWindow.cpp
+    src/app/MacroRecorder.cpp
     src/app/TrackpadMouse.cpp
     resources/app.rc
 )
 target_include_directories(SteamlessController PRIVATE resources)
-target_link_libraries(SteamlessController PRIVATE SteamController ViGEmClient)
+target_link_libraries(SteamlessController PRIVATE SteamController ViGEmClient gdiplus ole32 comctl32)
 set_target_properties(SteamlessController PROPERTIES
     OUTPUT_NAME "Xbox Mode Steamless Controller"
 )

@@ -2,3 +2,4 @@
 
 IDI_ICON_OFF  ICON  "SteamControllerOFF.ico"
 IDI_ICON_ON   ICON  "SteamControllerON.ico"
+IDR_CONTROLLER_IMAGE RCDATA "steam-controller-2026-front.png"

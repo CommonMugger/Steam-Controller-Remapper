@@ -62,8 +62,81 @@ static XUSB_REPORT Translate(const uint8_t* buf, size_t n) {
     return r;
 }
 
-static DS4_REPORT TranslateDs4(const uint8_t* buf, size_t n) {
-    XUSB_REPORT xusb = Translate(buf, n);
+static void ApplyPaddleMapping(XUSB_REPORT& report, PaddleMapping mapping) {
+    switch (mapping) {
+    case PaddleMapping::None: return;
+    case PaddleMapping::A: report.wButtons |= XUSB_GAMEPAD_A; return;
+    case PaddleMapping::B: report.wButtons |= XUSB_GAMEPAD_B; return;
+    case PaddleMapping::X: report.wButtons |= XUSB_GAMEPAD_X; return;
+    case PaddleMapping::Y: report.wButtons |= XUSB_GAMEPAD_Y; return;
+    case PaddleMapping::LeftShoulder: report.wButtons |= XUSB_GAMEPAD_LEFT_SHOULDER; return;
+    case PaddleMapping::RightShoulder: report.wButtons |= XUSB_GAMEPAD_RIGHT_SHOULDER; return;
+    case PaddleMapping::View: report.wButtons |= XUSB_GAMEPAD_BACK; return;
+    case PaddleMapping::Menu: report.wButtons |= XUSB_GAMEPAD_START; return;
+    case PaddleMapping::LeftThumb: report.wButtons |= XUSB_GAMEPAD_LEFT_THUMB; return;
+    case PaddleMapping::RightThumb: report.wButtons |= XUSB_GAMEPAD_RIGHT_THUMB; return;
+    case PaddleMapping::Guide: report.wButtons |= XUSB_GAMEPAD_GUIDE; return;
+    case PaddleMapping::DPadUp: report.wButtons |= XUSB_GAMEPAD_DPAD_UP; return;
+    case PaddleMapping::DPadRight: report.wButtons |= XUSB_GAMEPAD_DPAD_RIGHT; return;
+    case PaddleMapping::DPadDown: report.wButtons |= XUSB_GAMEPAD_DPAD_DOWN; return;
+    case PaddleMapping::DPadLeft: report.wButtons |= XUSB_GAMEPAD_DPAD_LEFT; return;
+    }
+}
+
+static PaddleMapping ResolvePaddleGamepadMapping(PaddleMapping menuMapping, const PaddleAction& action) {
+    switch (action.type) {
+    case PaddleActionType::UseMenuMapping:
+        return menuMapping;
+    case PaddleActionType::None:
+    case PaddleActionType::KeyChord:
+    case PaddleActionType::Macro:
+        return PaddleMapping::None;
+    case PaddleActionType::Gamepad:
+        return action.gamepadMapping;
+    }
+    return PaddleMapping::None;
+}
+
+static bool IsPaddlePressed(const uint8_t* buf, int paddleIndex) {
+    const uint8_t b0 = buf[2];
+    const uint8_t b1 = buf[3];
+    const uint8_t b2 = buf[4];
+    switch (paddleIndex) {
+    case 0: return (b2 & SteamController::BTN_L4) != 0;
+    case 1: return (b2 & SteamController::BTN_L5) != 0;
+    case 2: return (b0 & SteamController::BTN_R4) != 0;
+    case 3: return (b1 & SteamController::BTN_R5) != 0;
+    default: return (b0 & SteamController::BTN_QAM) != 0;
+    }
+}
+
+static void ApplyPaddleMappings(XUSB_REPORT& report, const uint8_t* buf,
+                                const PaddleMappings& mappings,
+                                const PaddleActionBindings& actions,
+                                bool prevPressed[4]) {
+    const PaddleMapping menuMappings[] = {
+        mappings.l4, mappings.l5, mappings.r4, mappings.r5, mappings.qam
+    };
+    const PaddleAction actionList[] = {
+        actions.l4, actions.l5, actions.r4, actions.r5, actions.qam
+    };
+
+    for (int i = 0; i < 5; ++i) {
+        const bool pressed = IsPaddlePressed(buf, i);
+        const PaddleAction& action = actionList[i];
+        const PaddleMapping mapping = ResolvePaddleGamepadMapping(menuMappings[i], action);
+        const bool active = pressed && (
+            action.rapidFire ? ((GetTickCount64() / 90) % 2 == 0) :
+            (action.type == PaddleActionType::UseMenuMapping || action.type == PaddleActionType::Gamepad));
+
+        if (active)
+            ApplyPaddleMapping(report, mapping);
+
+        prevPressed[i] = pressed;
+    }
+}
+
+static DS4_REPORT TranslateDs4(const XUSB_REPORT& xusb) {
     DS4_REPORT ds4{};
     DS4_REPORT_INIT(&ds4);
 
@@ -114,8 +187,11 @@ std::mutex g_notificationMutex;
 std::unordered_map<void*, VirtualController*> g_targetOwners;
 }
 
-VirtualController::VirtualController(EmulationMode mode, RumbleCallback onRumble)
-    : m_mode(mode), m_onRumble(std::move(onRumble)) {
+VirtualController::VirtualController(EmulationMode mode, PaddleMappings paddleMappings,
+                                     PaddleActionBindings paddleActions,
+                                     RumbleCallback onRumble)
+    : m_mode(mode), m_paddleMappings(paddleMappings), m_paddleActions(std::move(paddleActions)),
+      m_onRumble(std::move(onRumble)) {
     logging::Logf("[ViGEm] VirtualController ctor mode=%d", static_cast<int>(m_mode));
     m_client = vigem_alloc();
     if (!m_client) {
@@ -203,16 +279,17 @@ VirtualController::~VirtualController() {
 
 void VirtualController::Update(const uint8_t* buf, size_t n) {
     if (!m_valid) return;
+    XUSB_REPORT xusb = Translate(buf, n);
+    ApplyPaddleMappings(xusb, buf, m_paddleMappings, m_paddleActions, m_prevPaddlePressed);
     if (m_mode == EmulationMode::DualShock4) {
-        DS4_REPORT report = TranslateDs4(buf, n);
+        DS4_REPORT report = TranslateDs4(xusb);
         vigem_target_ds4_update(static_cast<PVIGEM_CLIENT>(m_client),
                                 static_cast<PVIGEM_TARGET>(m_target),
                                 report);
     } else {
-        XUSB_REPORT report = Translate(buf, n);
         vigem_target_x360_update(static_cast<PVIGEM_CLIENT>(m_client),
                                  static_cast<PVIGEM_TARGET>(m_target),
-                                 report);
+                                 xusb);
     }
 }
 

@@ -3,6 +3,7 @@
 #include <memory>
 
 class ControllerManager;
+class PaddleConfigWindow;
 
 class TrayApp {
 public:
@@ -23,6 +24,9 @@ private:
     void ShowContextMenu();
     void LoadSettings();
     void SaveSettings();
+    void LoadPaddleConfig();
+    void OpenPaddleConfig();
+    void ShowPaddleConfigWindow();
     bool IsSteamRunning() const;
     void ReconcileAutoMode();
     bool IsStartupEnabled() const;
@@ -34,8 +38,10 @@ private:
     HICON                              m_iconOff   = nullptr;
     HICON                              m_iconOn    = nullptr;
     std::unique_ptr<ControllerManager> m_controller;
+    std::unique_ptr<PaddleConfigWindow> m_paddleConfigWindow;
     bool                               m_autoEnableSteamlessMode = true;
     bool                               m_steamRunning            = false;
+    ULONGLONG                          m_lastReconnectAttemptTick = 0;
 
     static constexpr UINT IDM_TOGGLE        = 1001;
     static constexpr UINT IDM_EXIT          = 1002;
@@ -46,8 +52,10 @@ private:
     static constexpr UINT IDM_AUTOENABLE    = 1007;
     static constexpr UINT IDM_OUTPUT_X360   = 1008;
     static constexpr UINT IDM_OUTPUT_DS4    = 1009;
+    static constexpr UINT IDM_CONFIGURE_PADDLES   = 1400;
     static constexpr UINT WM_TRAY          = WM_APP + 1;
     static constexpr UINT TRAY_UID         = 1;
     static constexpr UINT TIMER_STEAM_POLL = 1;
     static constexpr UINT STEAM_POLL_MS    = 1000;
+    static constexpr UINT RECONNECT_BACKOFF_MS = 3000;
 };

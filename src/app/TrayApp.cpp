@@ -1,5 +1,7 @@
 #include "TrayApp.h"
 #include "ControllerManager.h"
+#include "PaddleConfig.h"
+#include "PaddleConfigWindow.h"
 #include "logging/Log.h"
 #include "resource.h"
 #include <dbt.h>
@@ -147,6 +149,7 @@ bool TrayApp::Init(HINSTANCE hInstance) {
 
     m_steamRunning = IsSteamRunning();
     LoadSettings();
+    LoadPaddleConfig();
     if (HasRunEntry(OLD_APP_NAME) && !HasRunEntry(APP_NAME))
         SetStartupEnabled(true);
     AddTrayIcon();
@@ -199,10 +202,6 @@ LRESULT TrayApp::HandleMessage(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             m_controller->SetTrackpadMouseEnabled(!m_controller->IsTrackpadMouseEnabled());
             SaveSettings();
             break;
-        case IDM_BACKBUTTONS:
-            m_controller->SetBackButtonsEnabled(!m_controller->IsBackButtonsEnabled());
-            SaveSettings();
-            break;
         case IDM_LEFT_TRACKPAD:
             m_controller->SetUseLeftTrackpad(!m_controller->IsUseLeftTrackpad());
             SaveSettings();
@@ -225,6 +224,9 @@ LRESULT TrayApp::HandleMessage(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             SaveSettings();
             ReconcileAutoMode();
             break;
+        case IDM_CONFIGURE_PADDLES:
+            ShowPaddleConfigWindow();
+            break;
         case IDM_EXIT:
             m_controller->DisableGameMode();
             PostQuitMessage(0);
@@ -234,6 +236,7 @@ LRESULT TrayApp::HandleMessage(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
     case WM_DEVICECHANGE:
         if (wp == DBT_DEVICEARRIVAL || wp == DBT_DEVICEREMOVECOMPLETE) {
+            m_lastReconnectAttemptTick = GetTickCount64();
             m_controller->OnDeviceChange();
             ReconcileAutoMode();
         }
@@ -257,8 +260,13 @@ LRESULT TrayApp::HandleMessage(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             // Retry controller discovery on the timer as well. On cold boot the
             // first open attempt can race HID initialization, and there may be
             // no later arrival event if the controller was already present.
-            m_controller->OnDeviceChange();
-            ReconcileAutoMode();
+            const ULONGLONG now = GetTickCount64();
+            if (m_controller->IsConnected() ||
+                (now - m_lastReconnectAttemptTick) >= RECONNECT_BACKOFF_MS) {
+                m_lastReconnectAttemptTick = now;
+                m_controller->OnDeviceChange();
+                ReconcileAutoMode();
+            }
 
             bool steamRunning = IsSteamRunning();
             if (steamRunning != m_steamRunning) {
@@ -405,6 +413,13 @@ void TrayApp::LoadSettings() {
             return val != 0;
         return def;
     };
+    auto readDword = [&](const wchar_t* name, DWORD def) -> DWORD {
+        DWORD val = 0, size = sizeof(val);
+        if (RegQueryValueExW(key, name, nullptr, nullptr,
+                             reinterpret_cast<LPBYTE>(&val), &size) == ERROR_SUCCESS)
+            return val;
+        return def;
+    };
 
     m_controller->SetTrackpadMouseEnabled(readBool(L"TrackpadMouse",   true));
     m_controller->SetBackButtonsEnabled  (readBool(L"BackButtons",     false));
@@ -413,6 +428,11 @@ void TrayApp::LoadSettings() {
     m_controller->SetEmulationMode(readBool(L"UseDs4Emulation", false)
         ? EmulationMode::DualShock4
         : EmulationMode::Xbox360);
+    m_controller->SetPaddleMapping(0, static_cast<PaddleMapping>(readDword(L"PaddleMapL4", 0)));
+    m_controller->SetPaddleMapping(1, static_cast<PaddleMapping>(readDword(L"PaddleMapL5", 0)));
+    m_controller->SetPaddleMapping(2, static_cast<PaddleMapping>(readDword(L"PaddleMapR4", 0)));
+    m_controller->SetPaddleMapping(3, static_cast<PaddleMapping>(readDword(L"PaddleMapR5", 0)));
+    m_controller->SetPaddleMapping(4, static_cast<PaddleMapping>(readDword(L"PaddleMapQAM", 0)));
 
     RegCloseKey(key);
 }
@@ -429,6 +449,11 @@ void TrayApp::SaveSettings() {
         RegSetValueExW(key, name, 0, REG_DWORD,
                        reinterpret_cast<const BYTE*>(&dw), sizeof(dw));
     };
+    auto writeDword = [&](const wchar_t* name, DWORD val) {
+        RegSetValueExW(key, name, 0, REG_DWORD,
+                       reinterpret_cast<const BYTE*>(&val), sizeof(val));
+    };
+    const PaddleMappings paddles = m_controller->GetPaddleMappings();
 
     writeBool(L"TrackpadMouse",   m_controller->IsTrackpadMouseEnabled());
     writeBool(L"BackButtons",     m_controller->IsBackButtonsEnabled());
@@ -436,15 +461,51 @@ void TrayApp::SaveSettings() {
     writeBool(L"AutoEnableSteamlessMode", m_autoEnableSteamlessMode);
     writeBool(L"UseDs4Emulation",
               m_controller->GetEmulationMode() == EmulationMode::DualShock4);
+    writeDword(L"PaddleMapL4", static_cast<DWORD>(paddles.l4));
+    writeDword(L"PaddleMapL5", static_cast<DWORD>(paddles.l5));
+    writeDword(L"PaddleMapR4", static_cast<DWORD>(paddles.r4));
+    writeDword(L"PaddleMapR5", static_cast<DWORD>(paddles.r5));
+    writeDword(L"PaddleMapQAM", static_cast<DWORD>(paddles.qam));
 
     RegCloseKey(key);
+}
+
+void TrayApp::LoadPaddleConfig() {
+    PaddleConfig::EnsureExists();
+    m_controller->SetPaddleActions(PaddleConfig::Load());
+}
+
+void TrayApp::OpenPaddleConfig() {
+    const std::wstring path = PaddleConfig::GetPath();
+    PaddleConfig::EnsureExists();
+    ShellExecuteW(nullptr, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+}
+
+void TrayApp::ShowPaddleConfigWindow() {
+    if (!m_paddleConfigWindow) {
+        m_paddleConfigWindow = std::make_unique<PaddleConfigWindow>(
+            [this]() { return m_controller->GetPaddleMappings(); },
+            [this]() { return m_controller->GetPaddleActions(); },
+            [this]() { return m_controller->GetCurrentMacroCaptureChord(); },
+            [this](const PaddleMappings& mappings, const PaddleActionBindings& actions) {
+                m_controller->SetPaddleMapping(0, mappings.l4);
+                m_controller->SetPaddleMapping(1, mappings.l5);
+                m_controller->SetPaddleMapping(2, mappings.r4);
+                m_controller->SetPaddleMapping(3, mappings.r5);
+                m_controller->SetPaddleMapping(4, mappings.qam);
+                m_controller->SetPaddleActions(actions);
+                SaveSettings();
+                PaddleConfig::Save(actions);
+            });
+    }
+
+    m_paddleConfigWindow->Show(m_hInstance, m_hwnd);
 }
 
 void TrayApp::ShowContextMenu() {
     bool connected      = m_controller->IsConnected();
     bool gameModeOn     = m_controller->IsGameModeActive();
     bool trackpadOn     = m_controller->IsTrackpadMouseEnabled();
-    bool backButtonsOn  = m_controller->IsBackButtonsEnabled();
     bool leftTrackpad   = m_controller->IsUseLeftTrackpad();
     bool startupOn      = IsStartupEnabled();
     bool canEnableMode  = connected && !m_steamRunning;
@@ -468,12 +529,10 @@ void TrayApp::ShowContextMenu() {
 
     UINT ds4Flags = MF_STRING | (ds4Mode ? MF_CHECKED : MF_UNCHECKED);
     AppendMenuW(menu, ds4Flags, IDM_OUTPUT_DS4, L"Emulate DualShock 4");
+    AppendMenuW(menu, MF_STRING, IDM_CONFIGURE_PADDLES, L"Remap Buttons...");
 
     UINT trackpadFlags = MF_STRING | (trackpadOn ? MF_CHECKED : MF_UNCHECKED);
     AppendMenuW(menu, trackpadFlags, IDM_TRACKPAD, L"Enable Trackpad Mouse");
-
-    UINT backFlags = MF_STRING | (backButtonsOn ? MF_CHECKED : MF_UNCHECKED);
-    AppendMenuW(menu, backFlags, IDM_BACKBUTTONS, L"Enable Back Buttons for Clicking");
 
     UINT leftFlags = MF_STRING | (leftTrackpad ? MF_CHECKED : MF_UNCHECKED);
     AppendMenuW(menu, leftFlags, IDM_LEFT_TRACKPAD, L"Use Left Trackpad Instead");

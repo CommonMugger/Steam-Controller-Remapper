@@ -34,6 +34,7 @@ static void BuildCmd(uint8_t (&buf)[64], uint8_t cmd,
 
 bool SteamController::Open() {
     logging::Logf("[SteamController] Open begin");
+    constexpr uint32_t kProbeTimeoutMs = 80;
     for (uint16_t pid : { SC2026_PID, SC2026_DONGLE_PID }) {
         auto paths = HidDevice::Enumerate(VALVE_VID, pid, VENDOR_USAGE_PAGE);
         logging::Logf("[SteamController] Enumerate pid=%04X paths=%zu", pid, paths.size());
@@ -48,7 +49,7 @@ bool SteamController::Open() {
             if (!m_device.Open(path)) continue;
 
             uint8_t buf[64];
-            size_t n = m_device.ReadInputReport(buf, sizeof(buf), /*timeoutMs=*/500);
+            size_t n = m_device.ReadInputReport(buf, sizeof(buf), kProbeTimeoutMs);
             if (n > 0 && buf[0] == REPORT_STATE) {
                 printf("Active interface found for PID=%04X.\n", pid);
                 logging::Logf("[SteamController] Active interface pid=%04X reportBytes=%zu reportId=0x%02X",
