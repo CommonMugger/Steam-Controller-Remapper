@@ -14,6 +14,8 @@ build/
 Results/
 HIDInfo
 HIDReportDescriptor.rtf
+*.pcapng
+resources/*.jpg
 
 # CMake user files
 CMakeSettings.json
