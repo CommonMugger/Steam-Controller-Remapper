@@ -1,10 +1,10 @@
-# Xbox Mode Steamless Controller
+# Steam Controller Remapper
 
 A lightweight Windows system tray app that lets you use a **Steam Controller** as a standard gamepad without Steam running.
 
-This fork exists to make the original project reliable in **Xbox Mode**. It focuses on boot-time controller recovery, delayed HID availability after reboot, and clean handoff back to Steam Input when `steam.exe` launches.
+Steam Controller Remapper is the standalone continuation of this project, focused on reliable **Steam Controller** remapping and profile switching across desktop, Steam, and **Xbox Mode** use.
 
-**Important:** for Xbox Mode startup to work reliably, Windows Startup Apps must be set to **System startup**, not **Desktop startup**, for `Xbox Mode Steamless Controller`.
+**Important:** for Xbox Mode startup to work reliably, Windows Startup Apps must be set to **System startup**, not **Desktop startup**, for `Steam Controller Remapper`.
 
 <img width="261" height="194" alt="image" src="https://github.com/user-attachments/assets/8e4a1355-d854-4b67-a486-590d225700f5" />
 
@@ -38,19 +38,19 @@ By default, the tray app automatically enables Steamless Mode when the controlle
 
 ## Xbox Mode Startup Setup
 
-**Important:** after installing or launching the app for the first time, open Windows Startup Apps settings and switch `Xbox Mode Steamless Controller` to **System startup**. If it stays on **Desktop startup**, the app may work on the normal desktop but fail to start correctly in Xbox Mode.
+**Important:** after installing or launching the app for the first time, open Windows Startup Apps settings and switch `Steam Controller Remapper` to **System startup**. If it stays on **Desktop startup**, the app may work on the normal desktop but fail to start correctly in Xbox Mode.
 
 ### Step by Step
 
 1. Open **Settings** in Windows.
 2. Go to **Apps**.
 3. Open **Startup**.
-4. Find **Xbox Mode Steamless Controller** in the startup app list.
+4. Find **Steam Controller Remapper** in the startup app list.
 5. Open its startup options.
 6. Change the startup mode from **Desktop startup** to **System startup**.
 7. Reboot and test Xbox Mode again.
 
-If you do not see the app in the list yet, launch `Xbox Mode Steamless Controller` once, then return to **Settings > Apps > Startup** and change it there.
+If you do not see the app in the list yet, launch `Steam Controller Remapper` once, then return to **Settings > Apps > Startup** and change it there.
 
 ### To build
 - [Visual Studio 2022](https://visualstudio.microsoft.com/) with the **Desktop development with C++** workload
@@ -60,26 +60,26 @@ If you do not see the app in the list yet, launch `Xbox Mode Steamless Controlle
 ## Building
 
 ```bat
-git clone https://github.com/CommonMugger/Xbox-Mode-Steamless-Controller.git
-cd Xbox-Mode-Steamless-Controller
+git clone https://github.com/CommonMugger/Steam-Controller-Remapper.git
+cd Steam-Controller-Remapper
 cmake -B build
-cmake --build build --target SteamlessController
+cmake --build build --target SteamControllerRemapper
 ```
 
-The debug executable will be at `build\Debug\Xbox Mode Steamless Controller.exe`.
+The debug executable will be at `build\Debug\Steam Controller Remapper.exe`.
 
 For a release build:
 
 ```bat
 cmake -B build/release -G "Visual Studio 17 2022"
-cmake --build build/release --config Release --target SteamlessController
+cmake --build build/release --config Release --target SteamControllerRemapper
 ```
 
 ## CMake Targets
 
 | Target | Description |
 |---|---|
-| `SteamlessController` | Main system tray application |
+| `SteamControllerRemapper` | Main system tray application |
 | `SteamProbe` | Console diagnostic tool that dumps raw HID report bytes while you interact with the controller |
 | `RawControllerProbe` | Checks whether `Windows.Gaming.Input.RawGameController` can enumerate the Steam Controller |
 
@@ -87,10 +87,15 @@ cmake --build build/release --config Release --target SteamlessController
 
 The Steam Controller exposes a vendor HID collection (usage page `0xFF00`) that carries all game input in a 54-byte report (ID `0x42`) at roughly 60 Hz. By default the firmware runs in **lizard mode**, emulating a keyboard and mouse so the controller works without drivers.
 
-Xbox Mode Steamless Controller sends HID feature reports to disable lizard mode, then reads the raw input reports and translates them into a virtual Xbox 360 controller via ViGEmBus. A background heartbeat re-sends the disable command every 800 ms to keep lizard mode off.
+Steam Controller Remapper sends HID feature reports to disable lizard mode, then reads the raw input reports and translates them into a virtual Xbox 360 controller via ViGEmBus. A background heartbeat re-sends the disable command every 800 ms to keep lizard mode off.
 
 The full input report layout is documented in [`src/steam/SteamController.h`](src/steam/SteamController.h).
 
 ## Third-party
 
 - [ViGEmClient](https://github.com/nefarius/ViGEmClient) - MIT License, built from source as a static library
+
+## Credits
+
+- Original project: [ddeverill/SteamlessController](https://github.com/ddeverill/SteamlessController)
+- Original author: [ddeverill](https://github.com/ddeverill)

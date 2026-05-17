@@ -7,8 +7,9 @@
 #include <vector>
 
 namespace {
-constexpr wchar_t kClassName[] = L"XboxModeSteamlessControllerMacroRecorder";
+constexpr wchar_t kClassName[] = L"SteamControllerRemapperMacroRecorder";
 constexpr int IDC_LIST = 3002;
+constexpr int IDC_HINT = 3003;
 constexpr int IDC_EDIT_STEP = 3004;
 constexpr int IDC_DELETE_STEP = 3005;
 constexpr int IDC_CLEAR_ALL = 3006;
@@ -151,6 +152,21 @@ std::wstring MergeSteps(const std::wstring& existing, const std::wstring& extra)
     return result;
 }
 
+std::wstring RemoveLastToken(const std::wstring& chordText) {
+    std::vector<std::wstring> tokens = SplitChordTokens(chordText);
+    if (tokens.empty())
+        return {};
+
+    tokens.pop_back();
+    std::wstring result;
+    for (size_t i = 0; i < tokens.size(); ++i) {
+        if (i != 0)
+            result += L"+";
+        result += tokens[i];
+    }
+    return result;
+}
+
 void AddOrMergeStep(RecorderState* state, const std::wstring& step) {
     if (step.empty())
         return;
@@ -217,6 +233,24 @@ void ClearAllSteps(RecorderState* state) {
     SetStatus(state, L"Recording macro input");
 }
 
+void BackspaceAction(RecorderState* state) {
+    state->held.clear();
+    if (state->appendIndex >= 0 && state->appendIndex < static_cast<int>(state->steps.size())) {
+        std::wstring updated = RemoveLastToken(state->steps[state->appendIndex]);
+        if (updated.empty()) {
+            DeleteSelectedStep(state);
+            return;
+        }
+
+        state->steps[state->appendIndex] = std::move(updated);
+        RefreshListItem(state, state->appendIndex);
+        SetStatus(state, L"Editing selected step");
+        return;
+    }
+
+    DeleteSelectedStep(state);
+}
+
 void FinishRecorder(RecorderState* state, bool accepted) {
     state->accepted = accepted;
     state->result.clear();
@@ -247,8 +281,7 @@ LRESULT CALLBACK KeyboardHookProc(int code, WPARAM wp, LPARAM lp) {
             return 1;
         }
         if (vk == VK_BACK) {
-            g_activeRecorder->held.clear();
-            DeleteSelectedStep(g_activeRecorder);
+            BackspaceAction(g_activeRecorder);
             return 1;
         }
 
@@ -293,6 +326,10 @@ LRESULT CALLBACK RecorderProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                       116, 228, 92, 26, hwnd, static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_DELETE_STEP))), nullptr, nullptr);
         CreateWindowW(L"BUTTON", L"Clear All", WS_CHILD | WS_VISIBLE | WS_TABSTOP,
                       216, 228, 92, 26, hwnd, static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_CLEAR_ALL))), nullptr, nullptr);
+        CreateWindowW(L"STATIC",
+                      L"Enter saves, Esc cancels. Double-click or Edit Step to append. Backspace trims the edited step or deletes the selected step.",
+                      WS_CHILD | WS_VISIBLE,
+                      16, 262, 344, 34, hwnd, static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_HINT))), nullptr, nullptr);
         RenderList(state);
         SetTimer(hwnd, TIMER_CONTROLLER_POLL, 30, nullptr);
         return 0;
@@ -377,7 +414,7 @@ bool MacroRecorder::Record(HWND owner, std::wstring& macroText, const std::wstri
         kClassName,
         L"Record Macro",
         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
-        CW_USEDEFAULT, CW_USEDEFAULT, 392, 310,
+        CW_USEDEFAULT, CW_USEDEFAULT, 392, 340,
         owner, nullptr, wc.hInstance, &state);
     if (!hwnd)
         return false;

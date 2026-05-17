@@ -7,6 +7,9 @@
 #include <sstream>
 
 namespace {
+constexpr wchar_t kConfigDirName[] = L"SteamControllerRemapper";
+constexpr wchar_t kLegacyConfigDirName[] = L"XboxModeSteamlessController";
+
 std::wstring Trim(std::wstring value) {
     value.erase(value.begin(), std::find_if(value.begin(), value.end(), [](wchar_t ch) {
         return !std::iswspace(ch);
@@ -22,6 +25,35 @@ std::wstring Upper(std::wstring value) {
         return static_cast<wchar_t>(std::towupper(ch));
     });
     return value;
+}
+
+std::wstring AppDataDirectory(const wchar_t* leafName) {
+    wchar_t localAppData[MAX_PATH] = {};
+    SHGetFolderPathW(nullptr, CSIDL_LOCAL_APPDATA, nullptr, SHGFP_TYPE_CURRENT, localAppData);
+    std::wstring dir = localAppData;
+    dir += L"\\";
+    dir += leafName;
+    return dir;
+}
+
+void MigrateIfMissing(const std::wstring& targetPath, const std::wstring& legacyPath) {
+    if (GetFileAttributesW(targetPath.c_str()) == INVALID_FILE_ATTRIBUTES &&
+        GetFileAttributesW(legacyPath.c_str()) != INVALID_FILE_ATTRIBUTES) {
+        CopyFileW(legacyPath.c_str(), targetPath.c_str(), TRUE);
+    }
+}
+
+std::wstring ConfigDirectory() {
+    const std::wstring dir = AppDataDirectory(kConfigDirName);
+    CreateDirectoryW(dir.c_str(), nullptr);
+    const std::wstring legacyDir = AppDataDirectory(kLegacyConfigDirName);
+    MigrateIfMissing(dir + L"\\paddles.ini", legacyDir + L"\\paddles.ini");
+    MigrateIfMissing(dir + L"\\profiles.ini", legacyDir + L"\\profiles.ini");
+    return dir;
+}
+
+std::wstring GetProfilesPath() {
+    return ConfigDirectory() + L"\\profiles.ini";
 }
 
 bool SplitOnce(const std::wstring& input, wchar_t delim, std::wstring& left, std::wstring& right) {
@@ -44,22 +76,37 @@ std::vector<std::wstring> Split(const std::wstring& input, wchar_t delim) {
 
 bool TryParseGamepad(const std::wstring& value, PaddleMapping& mapping) {
     const std::wstring upper = Upper(value);
-    if (upper == L"A" || upper == L"CROSS") { mapping = PaddleMapping::A; return true; }
-    if (upper == L"B" || upper == L"CIRCLE") { mapping = PaddleMapping::B; return true; }
-    if (upper == L"X" || upper == L"SQUARE") { mapping = PaddleMapping::X; return true; }
-    if (upper == L"Y" || upper == L"TRIANGLE") { mapping = PaddleMapping::Y; return true; }
-    if (upper == L"LB" || upper == L"LEFTSHOULDER") { mapping = PaddleMapping::LeftShoulder; return true; }
-    if (upper == L"RB" || upper == L"RIGHTSHOULDER") { mapping = PaddleMapping::RightShoulder; return true; }
-    if (upper == L"VIEW" || upper == L"BACK" || upper == L"SHARE") { mapping = PaddleMapping::View; return true; }
-    if (upper == L"MENU" || upper == L"START" || upper == L"OPTIONS") { mapping = PaddleMapping::Menu; return true; }
-    if (upper == L"L3" || upper == L"LEFTTHUMB") { mapping = PaddleMapping::LeftThumb; return true; }
-    if (upper == L"R3" || upper == L"RIGHTTHUMB") { mapping = PaddleMapping::RightThumb; return true; }
-    if (upper == L"GUIDE" || upper == L"PS") { mapping = PaddleMapping::Guide; return true; }
-    if (upper == L"DPADUP") { mapping = PaddleMapping::DPadUp; return true; }
-    if (upper == L"DPADRIGHT") { mapping = PaddleMapping::DPadRight; return true; }
-    if (upper == L"DPADDOWN") { mapping = PaddleMapping::DPadDown; return true; }
-    if (upper == L"DPADLEFT") { mapping = PaddleMapping::DPadLeft; return true; }
-    if (upper == L"NONE" || upper == L"UNMAPPED") { mapping = PaddleMapping::None; return true; }
+    std::wstring compact;
+    compact.reserve(upper.size());
+    for (wchar_t ch : upper) {
+        if (ch != L' ' && ch != L'\t' && ch != L'/' && ch != L'-')
+            compact.push_back(ch);
+    }
+
+    auto matches = [&](std::initializer_list<const wchar_t*> options) {
+        for (const wchar_t* option : options) {
+            const std::wstring text = option;
+            if (upper == text || compact == text)
+                return true;
+        }
+        return false;
+    };
+    if (matches({ L"A", L"CROSS", L"ACROSS" })) { mapping = PaddleMapping::A; return true; }
+    if (matches({ L"B", L"CIRCLE", L"BCIRCLE" })) { mapping = PaddleMapping::B; return true; }
+    if (matches({ L"X", L"SQUARE", L"XSQUARE" })) { mapping = PaddleMapping::X; return true; }
+    if (matches({ L"Y", L"TRIANGLE", L"YTRIANGLE" })) { mapping = PaddleMapping::Y; return true; }
+    if (matches({ L"LB", L"LEFTSHOULDER" })) { mapping = PaddleMapping::LeftShoulder; return true; }
+    if (matches({ L"RB", L"RIGHTSHOULDER" })) { mapping = PaddleMapping::RightShoulder; return true; }
+    if (matches({ L"VIEW", L"BACK", L"SHARE", L"VIEWSHARE" })) { mapping = PaddleMapping::View; return true; }
+    if (matches({ L"MENU", L"START", L"OPTIONS", L"MENUOPTIONS" })) { mapping = PaddleMapping::Menu; return true; }
+    if (matches({ L"L3", L"LEFTTHUMB", L"LEFTSTICKCLICK" })) { mapping = PaddleMapping::LeftThumb; return true; }
+    if (matches({ L"R3", L"RIGHTTHUMB", L"RIGHTSTICKCLICK" })) { mapping = PaddleMapping::RightThumb; return true; }
+    if (matches({ L"GUIDE", L"PS", L"GUIDEPS" })) { mapping = PaddleMapping::Guide; return true; }
+    if (matches({ L"DPADUP" })) { mapping = PaddleMapping::DPadUp; return true; }
+    if (matches({ L"DPADRIGHT" })) { mapping = PaddleMapping::DPadRight; return true; }
+    if (matches({ L"DPADDOWN" })) { mapping = PaddleMapping::DPadDown; return true; }
+    if (matches({ L"DPADLEFT" })) { mapping = PaddleMapping::DPadLeft; return true; }
+    if (matches({ L"NONE", L"UNMAPPED" })) { mapping = PaddleMapping::None; return true; }
     return false;
 }
 
@@ -167,6 +214,16 @@ PaddleAction* GetBinding(PaddleActionBindings& bindings, const std::wstring& nam
     return nullptr;
 }
 
+PaddleMapping* GetMapping(PaddleMappings& mappings, const std::wstring& name) {
+    const std::wstring upper = Upper(name);
+    if (upper == L"L4MAP") return &mappings.l4;
+    if (upper == L"L5MAP") return &mappings.l5;
+    if (upper == L"R4MAP") return &mappings.r4;
+    if (upper == L"R5MAP") return &mappings.r5;
+    if (upper == L"QAMMAP") return &mappings.qam;
+    return nullptr;
+}
+
 std::wstring DescribeGamepad(PaddleMapping mapping) {
     switch (mapping) {
     case PaddleMapping::None: return L"Unmapped";
@@ -187,6 +244,22 @@ std::wstring DescribeGamepad(PaddleMapping mapping) {
     case PaddleMapping::DPadLeft: return L"D-Pad Left";
     }
     return L"Unmapped";
+}
+
+PaddleMapping ParseGamepadMapping(const std::wstring& value, PaddleMapping fallback = PaddleMapping::None) {
+    PaddleMapping mapping = fallback;
+    if (TryParseGamepad(value, mapping))
+        return mapping;
+    return fallback;
+}
+
+void WriteProfileSection(std::wofstream& out, const RemapProfile& profile) {
+    out << L"[" << profile.id << L"]\n";
+    out << L"L4Map=" << DescribeGamepad(profile.mappings.l4) << L"\n";
+    out << L"L5Map=" << DescribeGamepad(profile.mappings.l5) << L"\n";
+    out << L"R4Map=" << DescribeGamepad(profile.mappings.r4) << L"\n";
+    out << L"R5Map=" << DescribeGamepad(profile.mappings.r5) << L"\n";
+    out << L"QAMMap=" << DescribeGamepad(profile.mappings.qam) << L"\n";
 }
 
 std::wstring DescribeChord(const std::vector<uint16_t>& chord) {
@@ -227,12 +300,7 @@ std::wstring DescribeChord(const std::vector<uint16_t>& chord) {
 }
 
 std::wstring PaddleConfig::GetPath() {
-    wchar_t localAppData[MAX_PATH] = {};
-    SHGetFolderPathW(nullptr, CSIDL_LOCAL_APPDATA, nullptr, SHGFP_TYPE_CURRENT, localAppData);
-    std::wstring dir = localAppData;
-    dir += L"\\XboxModeSteamlessController";
-    CreateDirectoryW(dir.c_str(), nullptr);
-    return dir + L"\\paddles.ini";
+    return ConfigDirectory() + L"\\paddles.ini";
 }
 
 void PaddleConfig::EnsureExists() {
@@ -368,4 +436,141 @@ std::wstring PaddleConfig::Describe(const PaddleAction& action, PaddleMapping fa
 bool PaddleConfig::ParseActionString(const std::wstring& value, PaddleAction& action) {
     action = ParseAction(value);
     return action.type != PaddleActionType::UseMenuMapping || Upper(Trim(value)) == L"MENU";
+}
+
+std::wstring PaddleConfig::NormalizeProfileId(const std::wstring& profileId) {
+    std::wstring id = Upper(Trim(profileId));
+    if (id.empty() || id == L"DEFAULT")
+        return L"default";
+
+    std::transform(id.begin(), id.end(), id.begin(), [](wchar_t ch) {
+        return static_cast<wchar_t>(std::towlower(ch));
+    });
+    return id;
+}
+
+std::vector<RemapProfile> PaddleConfig::LoadProfiles(const PaddleMappings& defaultMappings,
+                                                     const PaddleActionBindings& defaultActions) {
+    const std::wstring path = GetProfilesPath();
+    const DWORD attrs = GetFileAttributesW(path.c_str());
+    if (attrs == INVALID_FILE_ATTRIBUTES) {
+        std::vector<RemapProfile> profiles;
+        profiles.push_back(RemapProfile{ L"default", defaultMappings, defaultActions });
+        SaveProfiles(profiles);
+        return profiles;
+    }
+
+    std::vector<RemapProfile> profiles;
+    std::wifstream in(path);
+    std::wstring line;
+    RemapProfile* current = nullptr;
+
+    while (std::getline(in, line)) {
+        const std::wstring trimmed = Trim(line);
+        if (trimmed.empty() || trimmed[0] == L';' || trimmed[0] == L'#')
+            continue;
+
+        if (trimmed.front() == L'[' && trimmed.back() == L']') {
+            std::wstring id = NormalizeProfileId(trimmed.substr(1, trimmed.size() - 2));
+            profiles.push_back(RemapProfile{ id });
+            current = &profiles.back();
+            continue;
+        }
+
+        if (!current)
+            continue;
+
+        std::wstring key;
+        std::wstring value;
+        if (!SplitOnce(trimmed, L'=', key, value))
+            continue;
+
+        if (PaddleAction* action = GetBinding(current->actions, key)) {
+            *action = ParseAction(value);
+            continue;
+        }
+        if (PaddleMapping* mapping = GetMapping(current->mappings, key)) {
+            *mapping = ParseGamepadMapping(value);
+        }
+    }
+
+    if (profiles.empty())
+        profiles.push_back(RemapProfile{ L"default", defaultMappings, defaultActions });
+
+    auto defaultIt = std::find_if(profiles.begin(), profiles.end(), [](const RemapProfile& profile) {
+        return profile.id == L"default";
+    });
+
+    if (defaultIt == profiles.end()) {
+        profiles.insert(profiles.begin(), RemapProfile{ L"default", defaultMappings, defaultActions });
+    } else {
+        if (defaultIt->mappings.l4 == PaddleMapping::None && defaultIt->actions.l4.type == PaddleActionType::UseMenuMapping &&
+            defaultIt->actions.l5.type == PaddleActionType::UseMenuMapping &&
+            defaultIt->actions.r4.type == PaddleActionType::UseMenuMapping &&
+            defaultIt->actions.r5.type == PaddleActionType::UseMenuMapping &&
+            defaultIt->actions.qam.type == PaddleActionType::UseMenuMapping) {
+            defaultIt->mappings = defaultMappings;
+            defaultIt->actions = defaultActions;
+        }
+    }
+
+    return profiles;
+}
+
+void PaddleConfig::SaveProfiles(const std::vector<RemapProfile>& profiles) {
+    std::wofstream out(GetProfilesPath(), std::ios::trunc);
+    out << L"; Remap profiles\n";
+    out << L"; One section per profile id. Use [default] for the fallback profile.\n";
+    out << L"; Use Steam game names like [Elden Ring] for per-game profiles.\n";
+    out << L"; Actions:\n";
+    out << L";   menu\n";
+    out << L";   none\n";
+    out << L";   gamepad:A\n";
+    out << L";   key:CTRL+SHIFT+S\n";
+    out << L";   macro:CTRL+L, CTRL+C\n\n";
+
+    auto writeAction = [&](const wchar_t* name, const PaddleAction& action) {
+        std::wstring value = L"menu";
+        switch (action.type) {
+        case PaddleActionType::UseMenuMapping:
+            value = L"menu";
+            break;
+        case PaddleActionType::None:
+            value = L"none";
+            break;
+        case PaddleActionType::Gamepad:
+            value = L"gamepad:" + DescribeGamepad(action.gamepadMapping);
+            break;
+        case PaddleActionType::KeyChord:
+            value = L"key:" + DescribeChord(action.chord);
+            break;
+        case PaddleActionType::Macro: {
+            value = L"macro:";
+            bool first = true;
+            for (const auto& step : action.macroSteps) {
+                if (!first)
+                    value += L", ";
+                first = false;
+                value += DescribeChord(step);
+            }
+            break;
+        }
+        }
+        if (action.type != PaddleActionType::UseMenuMapping &&
+            action.type != PaddleActionType::None &&
+            action.rapidFire) {
+            value += L"|rapid";
+        }
+        out << name << L"=" << value << L"\n";
+    };
+
+    for (const RemapProfile& profile : profiles) {
+        WriteProfileSection(out, profile);
+        writeAction(L"L4", profile.actions.l4);
+        writeAction(L"L5", profile.actions.l5);
+        writeAction(L"R4", profile.actions.r4);
+        writeAction(L"R5", profile.actions.r5);
+        writeAction(L"QAM", profile.actions.qam);
+        out << L"\n";
+    }
 }

@@ -1,6 +1,9 @@
 #pragma once
+#include "PaddleConfig.h"
 #include <Windows.h>
 #include <memory>
+#include <string>
+#include <vector>
 
 class ControllerManager;
 class PaddleConfigWindow;
@@ -25,9 +28,18 @@ private:
     void LoadSettings();
     void SaveSettings();
     void LoadPaddleConfig();
-    void OpenPaddleConfig();
     void ShowPaddleConfigWindow();
+    std::vector<std::wstring> GetInstalledGames() const;
+    std::vector<std::wstring> RefreshInstalledGames() const;
+    std::vector<std::wstring> GetGameSourceSpecs() const;
+    void SetGameSourceSpecs(const std::vector<std::wstring>& specs);
+    bool GetAutoSwitchProfiles() const;
+    void SetAutoSwitchProfiles(bool enabled);
     bool IsSteamRunning() const;
+    std::wstring GetDetectedGameProfileId() const;
+    RemapProfile* EnsureProfileExists(const std::wstring& profileId, const std::wstring& baseProfileId = L"default");
+    void ApplyProfileById(const std::wstring& profileId, bool force = false);
+    void PersistProfiles();
     void ReconcileAutoMode();
     bool IsStartupEnabled() const;
     void SetStartupEnabled(bool enabled);
@@ -40,8 +52,12 @@ private:
     std::unique_ptr<ControllerManager> m_controller;
     std::unique_ptr<PaddleConfigWindow> m_paddleConfigWindow;
     bool                               m_autoEnableSteamlessMode = true;
+    bool                               m_autoSwitchProfiles      = false;
+    bool                               m_manualProfileOverride   = false;
     bool                               m_steamRunning            = false;
     ULONGLONG                          m_lastReconnectAttemptTick = 0;
+    std::vector<RemapProfile>          m_profiles;
+    std::wstring                       m_activeProfileId = L"default";
 
     static constexpr UINT IDM_TOGGLE        = 1001;
     static constexpr UINT IDM_EXIT          = 1002;

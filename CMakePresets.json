@@ -23,13 +23,13 @@
       "name": "release",
       "configurePreset": "release",
       "configuration": "Release",
-      "targets": ["SteamlessController"]
+      "targets": ["SteamControllerRemapper"]
     },
     {
       "name": "debug",
       "configurePreset": "debug",
       "configuration": "Debug",
-      "targets": ["SteamlessController"]
+      "targets": ["SteamControllerRemapper"]
     }
   ]
 }

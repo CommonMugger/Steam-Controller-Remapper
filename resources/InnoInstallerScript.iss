@@ -2,11 +2,11 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 ; Non-commercial use only
 
-#define MyAppName "Xbox Mode Steamless Controller"
+#define MyAppName "Steam Controller Remapper"
 #define MyAppVersion "1.0"
-#define MyAppPublisher "CommonMugger"
-#define MyAppURL "https://github.com/CommonMugger/SteamlessController"
-#define MyAppExeName "Xbox Mode Steamless Controller.exe"
+#define MyAppPublisher "Steam Controller Remapper contributors"
+#define MyAppURL "https://github.com/CommonMugger/Xbox-Mode-Steamless-Controller"
+#define MyAppExeName "Steam Controller Remapper.exe"
 
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application. Do not use the same AppId value in installers for other applications.
@@ -32,7 +32,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 DisableProgramGroupPage=yes
 ; Uncomment the following line to run in non administrative install mode (install for current user only).
 ;PrivilegesRequired=lowest
-OutputBaseFilename=XboxModeSteamlessController-Setup
+OutputBaseFilename=SteamControllerRemapper-Setup
 SetupIconFile=SteamControllerON.ico
 SolidCompression=yes
 WizardStyle=modern

@@ -2,8 +2,10 @@
 #include "ControllerManager.h"
 #include "PaddleConfig.h"
 #include "PaddleConfigWindow.h"
+#include "SteamLibrary.h"
 #include "logging/Log.h"
 #include "resource.h"
+#include <algorithm>
 #include <dbt.h>
 #include <shellapi.h>
 #include <string>
@@ -12,11 +14,15 @@
 
 static TrayApp* g_app = nullptr;
 
-static constexpr wchar_t WNDCLASS_NAME[] = L"XboxModeSteamlessControllerTray";
-static constexpr wchar_t REG_KEY[]       = L"Software\\XboxModeSteamlessController";
+static constexpr wchar_t WNDCLASS_NAME[] = L"SteamControllerRemapperTray";
+static constexpr wchar_t REG_KEY[]       = L"Software\\SteamControllerRemapper";
+static constexpr wchar_t LEGACY_REG_KEY[] = L"Software\\XboxModeSteamlessController";
 static constexpr wchar_t REG_RUN_KEY[]   = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
-static constexpr wchar_t APP_NAME[]      = L"Xbox Mode Steamless Controller";
+static constexpr wchar_t APP_NAME[]      = L"Steam Controller Remapper";
+static constexpr wchar_t LEGACY_APP_NAME[] = L"Xbox Mode Steamless Controller";
 static constexpr wchar_t OLD_APP_NAME[]  = L"SteamlessController";
+static constexpr wchar_t REG_LAST_PROFILE[] = L"LastActiveProfileId";
+static constexpr wchar_t REG_MANUAL_OVERRIDE[] = L"ManualProfileOverride";
 
 static bool HasRunEntry(const wchar_t* name) {
     HKEY key;
@@ -26,6 +32,16 @@ static bool HasRunEntry(const wchar_t* name) {
     bool exists = RegQueryValueExW(key, name, nullptr, nullptr, nullptr, nullptr) == ERROR_SUCCESS;
     RegCloseKey(key);
     return exists;
+}
+
+static bool HasAnyRunEntry() {
+    return HasRunEntry(APP_NAME) || HasRunEntry(LEGACY_APP_NAME) || HasRunEntry(OLD_APP_NAME);
+}
+
+static bool OpenSettingsKeyForRead(HKEY& key) {
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, REG_KEY, 0, KEY_READ, &key) == ERROR_SUCCESS)
+        return true;
+    return RegOpenKeyExW(HKEY_CURRENT_USER, LEGACY_REG_KEY, 0, KEY_READ, &key) == ERROR_SUCCESS;
 }
 
 static bool IsProcessRunningByName(const wchar_t* processName) {
@@ -50,26 +66,50 @@ static bool IsProcessRunningByName(const wchar_t* processName) {
     return running;
 }
 
-static std::wstring GetProcessNameById(DWORD pid) {
+static RemapProfile* FindProfileById(std::vector<RemapProfile>& profiles, const std::wstring& id) {
+    const std::wstring normalized = PaddleConfig::NormalizeProfileId(id);
+    for (RemapProfile& profile : profiles) {
+        if (profile.id == normalized)
+            return &profile;
+    }
+    return nullptr;
+}
+
+static std::wstring GetProcessPathById(DWORD pid) {
+    HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!process)
+        return {};
+
+    wchar_t buffer[MAX_PATH] = {};
+    DWORD size = static_cast<DWORD>(std::size(buffer));
+    std::wstring path;
+    if (QueryFullProcessImageNameW(process, 0, buffer, &size))
+        path.assign(buffer, size);
+    CloseHandle(process);
+    return path;
+}
+
+static std::vector<std::wstring> GetRunningProcessPaths() {
     HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (snapshot == INVALID_HANDLE_VALUE)
         return {};
 
     PROCESSENTRY32W entry{};
     entry.dwSize = sizeof(entry);
-    std::wstring name;
+    std::vector<std::wstring> processPaths;
 
     if (Process32FirstW(snapshot, &entry)) {
         do {
-            if (entry.th32ProcessID == pid) {
-                name = entry.szExeFile;
-                break;
-            }
+            if (entry.th32ProcessID == 0 || entry.th32ProcessID == GetCurrentProcessId())
+                continue;
+            std::wstring processPath = GetProcessPathById(entry.th32ProcessID);
+            if (!processPath.empty())
+                processPaths.push_back(std::move(processPath));
         } while (Process32NextW(snapshot, &entry));
     }
 
     CloseHandle(snapshot);
-    return name;
+    return processPaths;
 }
 
 static void LogLaunchContext() {
@@ -84,7 +124,23 @@ static void LogLaunchContext() {
         GetClassNameW(shellWindow, shellClass, static_cast<int>(std::size(shellClass)));
     }
 
-    std::wstring shellProcess = shellPid != 0 ? GetProcessNameById(shellPid) : L"";
+    std::wstring shellProcess;
+    if (shellPid != 0) {
+        HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if (snapshot != INVALID_HANDLE_VALUE) {
+            PROCESSENTRY32W entry{};
+            entry.dwSize = sizeof(entry);
+            if (Process32FirstW(snapshot, &entry)) {
+                do {
+                    if (entry.th32ProcessID == shellPid) {
+                        shellProcess = entry.szExeFile;
+                        break;
+                    }
+                } while (Process32NextW(snapshot, &entry));
+            }
+            CloseHandle(snapshot);
+        }
+    }
     bool explorerRunning = IsProcessRunningByName(L"explorer.exe");
     bool steamRunning = IsProcessRunningByName(L"steam.exe");
 
@@ -129,7 +185,7 @@ bool TrayApp::Init(HINSTANCE hInstance) {
     if (!RegisterClassExW(&wc)) return false;
 
     // Message-only window — invisible, never shown.
-    m_hwnd = CreateWindowExW(0, WNDCLASS_NAME, L"Xbox Mode Steamless Controller",
+    m_hwnd = CreateWindowExW(0, WNDCLASS_NAME, APP_NAME,
                              0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, hInstance, nullptr);
     if (!m_hwnd) return false;
 
@@ -150,7 +206,8 @@ bool TrayApp::Init(HINSTANCE hInstance) {
     m_steamRunning = IsSteamRunning();
     LoadSettings();
     LoadPaddleConfig();
-    if (HasRunEntry(OLD_APP_NAME) && !HasRunEntry(APP_NAME))
+    ApplyProfileById(m_activeProfileId, true);
+    if ((HasRunEntry(LEGACY_APP_NAME) || HasRunEntry(OLD_APP_NAME)) && !HasRunEntry(APP_NAME))
         SetStartupEnabled(true);
     AddTrayIcon();
     UpdateTrayIcon(m_controller->IsConnected(), m_controller->IsGameModeActive(), false);
@@ -225,7 +282,8 @@ LRESULT TrayApp::HandleMessage(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             ReconcileAutoMode();
             break;
         case IDM_CONFIGURE_PADDLES:
-            ShowPaddleConfigWindow();
+            if (!m_steamRunning)
+                ShowPaddleConfigWindow();
             break;
         case IDM_EXIT:
             m_controller->DisableGameMode();
@@ -271,7 +329,19 @@ LRESULT TrayApp::HandleMessage(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             bool steamRunning = IsSteamRunning();
             if (steamRunning != m_steamRunning) {
                 m_steamRunning = steamRunning;
+                if (m_steamRunning && m_paddleConfigWindow)
+                    m_paddleConfigWindow->Close();
                 ReconcileAutoMode();
+            }
+
+            if (m_autoSwitchProfiles) {
+                const std::wstring detectedProfileId = GetDetectedGameProfileId();
+                if (!detectedProfileId.empty()) {
+                    m_manualProfileOverride = false;
+                    ApplyProfileById(detectedProfileId);
+                } else if (!m_manualProfileOverride) {
+                    ApplyProfileById(L"default");
+                }
             }
             return 0;
         }
@@ -293,7 +363,7 @@ void TrayApp::AddTrayIcon() {
     nid.uFlags           = NIF_ICON | NIF_MESSAGE | NIF_TIP;
     nid.uCallbackMessage = WM_TRAY;
     nid.hIcon            = m_iconOff;
-    wcscpy_s(nid.szTip, L"Xbox Mode Steamless Controller");
+    wcscpy_s(nid.szTip, APP_NAME);
     Shell_NotifyIconW(NIM_ADD, &nid);
     nid.uVersion = NOTIFYICON_VERSION_4;
     Shell_NotifyIconW(NIM_SETVERSION, &nid);
@@ -311,9 +381,9 @@ void TrayApp::UpdateTrayIcon(bool connected, bool gameModeActive, bool vigemMiss
     if (vigemMissing) { ShowViGEmBalloon(); return; }
     bool gameModeOn = gameModeActive;
 
-    const wchar_t* tip = gameModeOn  ? L"Xbox Mode Steamless Controller — Steamless Mode ON"
-                       : connected   ? L"Xbox Mode Steamless Controller — Connected (Steamless Mode OFF)"
-                                     : L"Xbox Mode Steamless Controller — No controller found";
+    const wchar_t* tip = gameModeOn  ? L"Steam Controller Remapper - Steamless Mode ON"
+                       : connected   ? L"Steam Controller Remapper - Connected (Steamless Mode OFF)"
+                                     : L"Steam Controller Remapper - No controller found";
 
     NOTIFYICONDATAW nid{};
     nid.cbSize = sizeof(nid);
@@ -359,6 +429,117 @@ bool TrayApp::IsSteamRunning() const {
     return running;
 }
 
+std::vector<std::wstring> TrayApp::GetInstalledGames() const {
+    return SteamLibrary::ListInstalledGameNames();
+}
+
+std::vector<std::wstring> TrayApp::RefreshInstalledGames() const {
+    return SteamLibrary::RefreshInstalledGameNames();
+}
+
+std::vector<std::wstring> TrayApp::GetGameSourceSpecs() const {
+    return SteamLibrary::GetConfiguredSourceSpecs();
+}
+
+void TrayApp::SetGameSourceSpecs(const std::vector<std::wstring>& specs) {
+    SteamLibrary::SetConfiguredSourceSpecs(specs);
+}
+
+bool TrayApp::GetAutoSwitchProfiles() const {
+    return m_autoSwitchProfiles;
+}
+
+void TrayApp::SetAutoSwitchProfiles(bool enabled) {
+    m_autoSwitchProfiles = enabled;
+    if (!enabled)
+        m_manualProfileOverride = false;
+    SaveSettings();
+}
+
+std::wstring TrayApp::GetDetectedGameProfileId() const {
+    std::vector<std::wstring> candidatePaths;
+    HWND foreground = GetForegroundWindow();
+    if (foreground) {
+        DWORD pid = 0;
+        GetWindowThreadProcessId(foreground, &pid);
+        if (pid != 0 && pid != GetCurrentProcessId()) {
+            const std::wstring processPath = GetProcessPathById(pid);
+            if (!processPath.empty())
+                candidatePaths.push_back(processPath);
+        }
+    }
+
+    const std::wstring foregroundMatch =
+        PaddleConfig::NormalizeProfileId(SteamLibrary::MatchProcessListToInstalledGame(candidatePaths));
+    if (!foregroundMatch.empty() && foregroundMatch != L"default") {
+        logging::Logf("[Profiles] Detected foreground profile id=%s",
+                      logging::Narrow(foregroundMatch).c_str());
+        return foregroundMatch;
+    }
+
+    if (m_activeProfileId != L"default") {
+        const std::wstring runningMatch =
+            PaddleConfig::NormalizeProfileId(SteamLibrary::MatchProcessListToInstalledGame(GetRunningProcessPaths()));
+        if (runningMatch == m_activeProfileId) {
+            logging::Logf("[Profiles] Keeping active running profile id=%s",
+                          logging::Narrow(runningMatch).c_str());
+            return runningMatch;
+        }
+    }
+
+    return {};
+}
+
+RemapProfile* TrayApp::EnsureProfileExists(const std::wstring& profileId, const std::wstring& baseProfileId) {
+    const std::wstring normalizedId = PaddleConfig::NormalizeProfileId(profileId);
+    if (normalizedId.empty())
+        return nullptr;
+
+    if (RemapProfile* existing = FindProfileById(m_profiles, normalizedId))
+        return existing;
+
+    const std::wstring normalizedBaseId = PaddleConfig::NormalizeProfileId(baseProfileId);
+    const RemapProfile* base = FindProfileById(m_profiles, normalizedBaseId);
+    if (!base)
+        base = FindProfileById(m_profiles, L"default");
+
+    RemapProfile profile = base ? *base : RemapProfile{};
+    profile.id = normalizedId;
+    m_profiles.push_back(std::move(profile));
+    PersistProfiles();
+    logging::Logf("[Profiles] Created profile id=%s base=%s",
+                  logging::Narrow(normalizedId).c_str(),
+                  logging::Narrow(base ? base->id : std::wstring(L"default")).c_str());
+    return &m_profiles.back();
+}
+
+void TrayApp::ApplyProfileById(const std::wstring& profileId, bool force) {
+    const std::wstring normalizedId = PaddleConfig::NormalizeProfileId(profileId);
+    if (!force && normalizedId == m_activeProfileId)
+        return;
+
+    const RemapProfile* profile = EnsureProfileExists(normalizedId);
+    if (!profile)
+        return;
+
+    m_activeProfileId = normalizedId;
+    m_controller->SetPaddleMapping(0, profile->mappings.l4);
+    m_controller->SetPaddleMapping(1, profile->mappings.l5);
+    m_controller->SetPaddleMapping(2, profile->mappings.r4);
+    m_controller->SetPaddleMapping(3, profile->mappings.r5);
+    m_controller->SetPaddleMapping(4, profile->mappings.qam);
+    m_controller->SetPaddleActions(profile->actions);
+    SaveSettings();
+    if (m_paddleConfigWindow && m_paddleConfigWindow->IsOpen())
+        m_paddleConfigWindow->ReloadFromModel();
+    logging::Logf("[Profiles] Applied profile id=%s",
+                  logging::Narrow(m_activeProfileId).c_str());
+}
+
+void TrayApp::PersistProfiles() {
+    PaddleConfig::SaveProfiles(m_profiles);
+}
+
 void TrayApp::ReconcileAutoMode() {
     if (!m_controller)
         return;
@@ -375,7 +556,7 @@ void TrayApp::ReconcileAutoMode() {
 }
 
 bool TrayApp::IsStartupEnabled() const {
-    return HasRunEntry(APP_NAME) || HasRunEntry(OLD_APP_NAME);
+    return HasAnyRunEntry();
 }
 
 void TrayApp::SetStartupEnabled(bool enabled) {
@@ -392,9 +573,11 @@ void TrayApp::SetStartupEnabled(bool enabled) {
         RegSetValueExW(key, APP_NAME, 0, REG_SZ,
                        reinterpret_cast<const BYTE*>(command.c_str()),
                        static_cast<DWORD>((command.size() + 1) * sizeof(wchar_t)));
+        RegDeleteValueW(key, LEGACY_APP_NAME);
         RegDeleteValueW(key, OLD_APP_NAME);
     } else {
         RegDeleteValueW(key, APP_NAME);
+        RegDeleteValueW(key, LEGACY_APP_NAME);
         RegDeleteValueW(key, OLD_APP_NAME);
     }
 
@@ -403,7 +586,7 @@ void TrayApp::SetStartupEnabled(bool enabled) {
 
 void TrayApp::LoadSettings() {
     HKEY key;
-    if (RegOpenKeyExW(HKEY_CURRENT_USER, REG_KEY, 0, KEY_READ, &key) != ERROR_SUCCESS)
+    if (!OpenSettingsKeyForRead(key))
         return;
 
     auto readBool = [&](const wchar_t* name, bool def) -> bool {
@@ -420,11 +603,11 @@ void TrayApp::LoadSettings() {
             return val;
         return def;
     };
-
     m_controller->SetTrackpadMouseEnabled(readBool(L"TrackpadMouse",   true));
     m_controller->SetBackButtonsEnabled  (readBool(L"BackButtons",     false));
     m_controller->SetUseLeftTrackpad     (readBool(L"UseLeftTrackpad", false));
     m_autoEnableSteamlessMode            = readBool(L"AutoEnableSteamlessMode", true);
+    m_autoSwitchProfiles                 = readBool(L"AutoSwitchProfiles", false);
     m_controller->SetEmulationMode(readBool(L"UseDs4Emulation", false)
         ? EmulationMode::DualShock4
         : EmulationMode::Xbox360);
@@ -433,6 +616,8 @@ void TrayApp::LoadSettings() {
     m_controller->SetPaddleMapping(2, static_cast<PaddleMapping>(readDword(L"PaddleMapR4", 0)));
     m_controller->SetPaddleMapping(3, static_cast<PaddleMapping>(readDword(L"PaddleMapR5", 0)));
     m_controller->SetPaddleMapping(4, static_cast<PaddleMapping>(readDword(L"PaddleMapQAM", 0)));
+    m_activeProfileId = L"default";
+    m_manualProfileOverride = false;
 
     RegCloseKey(key);
 }
@@ -453,12 +638,18 @@ void TrayApp::SaveSettings() {
         RegSetValueExW(key, name, 0, REG_DWORD,
                        reinterpret_cast<const BYTE*>(&val), sizeof(val));
     };
+    auto writeString = [&](const wchar_t* name, const std::wstring& value) {
+        RegSetValueExW(key, name, 0, REG_SZ,
+                       reinterpret_cast<const BYTE*>(value.c_str()),
+                       static_cast<DWORD>((value.size() + 1) * sizeof(wchar_t)));
+    };
     const PaddleMappings paddles = m_controller->GetPaddleMappings();
 
     writeBool(L"TrackpadMouse",   m_controller->IsTrackpadMouseEnabled());
     writeBool(L"BackButtons",     m_controller->IsBackButtonsEnabled());
     writeBool(L"UseLeftTrackpad", m_controller->IsUseLeftTrackpad());
     writeBool(L"AutoEnableSteamlessMode", m_autoEnableSteamlessMode);
+    writeBool(L"AutoSwitchProfiles", m_autoSwitchProfiles);
     writeBool(L"UseDs4Emulation",
               m_controller->GetEmulationMode() == EmulationMode::DualShock4);
     writeDword(L"PaddleMapL4", static_cast<DWORD>(paddles.l4));
@@ -466,36 +657,63 @@ void TrayApp::SaveSettings() {
     writeDword(L"PaddleMapR4", static_cast<DWORD>(paddles.r4));
     writeDword(L"PaddleMapR5", static_cast<DWORD>(paddles.r5));
     writeDword(L"PaddleMapQAM", static_cast<DWORD>(paddles.qam));
+    writeString(REG_LAST_PROFILE, m_activeProfileId);
+    writeBool(REG_MANUAL_OVERRIDE, m_manualProfileOverride);
 
     RegCloseKey(key);
 }
 
 void TrayApp::LoadPaddleConfig() {
     PaddleConfig::EnsureExists();
-    m_controller->SetPaddleActions(PaddleConfig::Load());
-}
-
-void TrayApp::OpenPaddleConfig() {
-    const std::wstring path = PaddleConfig::GetPath();
-    PaddleConfig::EnsureExists();
-    ShellExecuteW(nullptr, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+    PaddleActionBindings legacyActions = PaddleConfig::Load();
+    PaddleMappings legacyMappings = m_controller->GetPaddleMappings();
+    m_profiles = PaddleConfig::LoadProfiles(legacyMappings, legacyActions);
 }
 
 void TrayApp::ShowPaddleConfigWindow() {
     if (!m_paddleConfigWindow) {
         m_paddleConfigWindow = std::make_unique<PaddleConfigWindow>(
-            [this]() { return m_controller->GetPaddleMappings(); },
-            [this]() { return m_controller->GetPaddleActions(); },
+            [this]() {
+                const RemapProfile* profile = FindProfileById(m_profiles, m_activeProfileId);
+                return profile ? profile->mappings : PaddleMappings{};
+            },
+            [this]() {
+                const RemapProfile* profile = FindProfileById(m_profiles, m_activeProfileId);
+                return profile ? profile->actions : PaddleActionBindings{};
+            },
             [this]() { return m_controller->GetCurrentMacroCaptureChord(); },
+            [this]() { return m_activeProfileId; },
+            [this]() { return GetInstalledGames(); },
+            [this]() { return RefreshInstalledGames(); },
+            [this]() { return GetGameSourceSpecs(); },
+            [this](const std::vector<std::wstring>& specs) { SetGameSourceSpecs(specs); },
+            [this]() { return GetAutoSwitchProfiles(); },
+            [this](bool enabled) { SetAutoSwitchProfiles(enabled); },
+            [this](const std::wstring& profileId) {
+                const std::wstring normalizedId = PaddleConfig::NormalizeProfileId(profileId);
+                EnsureProfileExists(normalizedId);
+                m_manualProfileOverride = true;
+                ApplyProfileById(normalizedId, true);
+            },
+            [this](const std::wstring& profileId) {
+                const std::wstring normalizedId = PaddleConfig::NormalizeProfileId(profileId);
+                m_profiles.erase(std::remove_if(m_profiles.begin(), m_profiles.end(),
+                    [&](const RemapProfile& profile) { return profile.id == normalizedId; }),
+                    m_profiles.end());
+                PersistProfiles();
+                ApplyProfileById(L"default", true);
+            },
             [this](const PaddleMappings& mappings, const PaddleActionBindings& actions) {
-                m_controller->SetPaddleMapping(0, mappings.l4);
-                m_controller->SetPaddleMapping(1, mappings.l5);
-                m_controller->SetPaddleMapping(2, mappings.r4);
-                m_controller->SetPaddleMapping(3, mappings.r5);
-                m_controller->SetPaddleMapping(4, mappings.qam);
-                m_controller->SetPaddleActions(actions);
-                SaveSettings();
-                PaddleConfig::Save(actions);
+                RemapProfile* profile = FindProfileById(m_profiles, m_activeProfileId);
+                if (!profile) {
+                    m_profiles.push_back(RemapProfile{ m_activeProfileId, mappings, actions });
+                    profile = &m_profiles.back();
+                } else {
+                    profile->mappings = mappings;
+                    profile->actions = actions;
+                }
+                PersistProfiles();
+                ApplyProfileById(m_activeProfileId, true);
             });
     }
 
@@ -509,6 +727,7 @@ void TrayApp::ShowContextMenu() {
     bool leftTrackpad   = m_controller->IsUseLeftTrackpad();
     bool startupOn      = IsStartupEnabled();
     bool canEnableMode  = connected && !m_steamRunning;
+    bool canConfigure   = !m_steamRunning;
     bool ds4Mode        = m_controller->GetEmulationMode() == EmulationMode::DualShock4;
 
     HMENU menu = CreatePopupMenu();
@@ -529,7 +748,7 @@ void TrayApp::ShowContextMenu() {
 
     UINT ds4Flags = MF_STRING | (ds4Mode ? MF_CHECKED : MF_UNCHECKED);
     AppendMenuW(menu, ds4Flags, IDM_OUTPUT_DS4, L"Emulate DualShock 4");
-    AppendMenuW(menu, MF_STRING, IDM_CONFIGURE_PADDLES, L"Remap Buttons...");
+    AppendMenuW(menu, MF_STRING | (canConfigure ? MF_ENABLED : MF_GRAYED), IDM_CONFIGURE_PADDLES, L"Remap Buttons...");
 
     UINT trackpadFlags = MF_STRING | (trackpadOn ? MF_CHECKED : MF_UNCHECKED);
     AppendMenuW(menu, trackpadFlags, IDM_TRACKPAD, L"Enable Trackpad Mouse");

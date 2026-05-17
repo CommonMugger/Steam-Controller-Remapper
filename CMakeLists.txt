@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(XboxModeSteamlessController CXX)
+project(SteamControllerRemapper CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -47,7 +47,7 @@ if (MSVC)
 endif()
 
 # System tray app (no console window)
-add_executable(SteamlessController WIN32
+add_executable(SteamControllerRemapper WIN32
     src/app/main.cpp
     src/app/TrayApp.cpp
     src/app/ControllerManager.cpp
@@ -55,15 +55,16 @@ add_executable(SteamlessController WIN32
     src/app/PaddleOverlay.cpp
     src/app/PaddleConfig.cpp
     src/app/PaddleConfigWindow.cpp
+    src/app/SteamLibrary.cpp
     src/app/MacroRecorder.cpp
     src/app/TrackpadMouse.cpp
     resources/app.rc
 )
-target_include_directories(SteamlessController PRIVATE resources)
-target_link_libraries(SteamlessController PRIVATE SteamController ViGEmClient gdiplus ole32 comctl32)
-set_target_properties(SteamlessController PROPERTIES
-    OUTPUT_NAME "Xbox Mode Steamless Controller"
+target_include_directories(SteamControllerRemapper PRIVATE resources)
+target_link_libraries(SteamControllerRemapper PRIVATE SteamController ViGEmClient gdiplus ole32 comctl32)
+set_target_properties(SteamControllerRemapper PROPERTIES
+    OUTPUT_NAME "Steam Controller Remapper"
 )
 if (MSVC)
-    target_compile_options(SteamlessController PRIVATE /W4 /WX)
+    target_compile_options(SteamControllerRemapper PRIVATE /W4 /WX)
 endif()

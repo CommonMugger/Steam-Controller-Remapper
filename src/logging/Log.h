@@ -10,16 +10,20 @@
 
 namespace logging {
 
-inline std::wstring LogDirectory() {
+inline std::wstring BuildAppDataDirectory(const wchar_t* leafName) {
     wchar_t path[MAX_PATH];
     DWORD n = GetEnvironmentVariableW(L"LOCALAPPDATA", path, MAX_PATH);
     if (n == 0 || n >= MAX_PATH)
         return L".";
-    return std::wstring(path) + L"\\XboxModeSteamlessController";
+    return std::wstring(path) + L"\\" + leafName;
+}
+
+inline std::wstring LogDirectory() {
+    return BuildAppDataDirectory(L"SteamControllerRemapper");
 }
 
 inline std::wstring LogPath() {
-    return LogDirectory() + L"\\steamless.log";
+    return LogDirectory() + L"\\steam-controller-remapper.log";
 }
 
 inline void EnsureLogDirectory() {
