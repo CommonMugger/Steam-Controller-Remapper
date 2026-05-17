@@ -62,6 +62,49 @@ static XUSB_REPORT Translate(const uint8_t* buf, size_t n) {
     return r;
 }
 
+static DS4_REPORT TranslateDs4(const uint8_t* buf, size_t n) {
+    XUSB_REPORT xusb = Translate(buf, n);
+    DS4_REPORT ds4{};
+    DS4_REPORT_INIT(&ds4);
+
+    ds4.bThumbLX = static_cast<uint8_t>((static_cast<int>(xusb.sThumbLX) + 32768) / 257);
+    ds4.bThumbLY = static_cast<uint8_t>((32767 - static_cast<int>(xusb.sThumbLY)) / 257);
+    ds4.bThumbRX = static_cast<uint8_t>((static_cast<int>(xusb.sThumbRX) + 32768) / 257);
+    ds4.bThumbRY = static_cast<uint8_t>((32767 - static_cast<int>(xusb.sThumbRY)) / 257);
+    ds4.bTriggerL = xusb.bLeftTrigger;
+    ds4.bTriggerR = xusb.bRightTrigger;
+
+    if (xusb.wButtons & XUSB_GAMEPAD_BACK) ds4.wButtons |= DS4_BUTTON_SHARE;
+    if (xusb.wButtons & XUSB_GAMEPAD_START) ds4.wButtons |= DS4_BUTTON_OPTIONS;
+    if (xusb.wButtons & XUSB_GAMEPAD_LEFT_THUMB) ds4.wButtons |= DS4_BUTTON_THUMB_LEFT;
+    if (xusb.wButtons & XUSB_GAMEPAD_RIGHT_THUMB) ds4.wButtons |= DS4_BUTTON_THUMB_RIGHT;
+    if (xusb.wButtons & XUSB_GAMEPAD_LEFT_SHOULDER) ds4.wButtons |= DS4_BUTTON_SHOULDER_LEFT;
+    if (xusb.wButtons & XUSB_GAMEPAD_RIGHT_SHOULDER) ds4.wButtons |= DS4_BUTTON_SHOULDER_RIGHT;
+    if (xusb.wButtons & XUSB_GAMEPAD_GUIDE) ds4.bSpecial |= DS4_SPECIAL_BUTTON_PS;
+    if (xusb.wButtons & XUSB_GAMEPAD_A) ds4.wButtons |= DS4_BUTTON_CROSS;
+    if (xusb.wButtons & XUSB_GAMEPAD_B) ds4.wButtons |= DS4_BUTTON_CIRCLE;
+    if (xusb.wButtons & XUSB_GAMEPAD_X) ds4.wButtons |= DS4_BUTTON_SQUARE;
+    if (xusb.wButtons & XUSB_GAMEPAD_Y) ds4.wButtons |= DS4_BUTTON_TRIANGLE;
+    if (xusb.bLeftTrigger > 0) ds4.wButtons |= DS4_BUTTON_TRIGGER_LEFT;
+    if (xusb.bRightTrigger > 0) ds4.wButtons |= DS4_BUTTON_TRIGGER_RIGHT;
+
+    const bool up = (xusb.wButtons & XUSB_GAMEPAD_DPAD_UP) != 0;
+    const bool right = (xusb.wButtons & XUSB_GAMEPAD_DPAD_RIGHT) != 0;
+    const bool down = (xusb.wButtons & XUSB_GAMEPAD_DPAD_DOWN) != 0;
+    const bool left = (xusb.wButtons & XUSB_GAMEPAD_DPAD_LEFT) != 0;
+
+    if (up && right) DS4_SET_DPAD(&ds4, DS4_BUTTON_DPAD_NORTHEAST);
+    else if (right && down) DS4_SET_DPAD(&ds4, DS4_BUTTON_DPAD_SOUTHEAST);
+    else if (down && left) DS4_SET_DPAD(&ds4, DS4_BUTTON_DPAD_SOUTHWEST);
+    else if (left && up) DS4_SET_DPAD(&ds4, DS4_BUTTON_DPAD_NORTHWEST);
+    else if (up) DS4_SET_DPAD(&ds4, DS4_BUTTON_DPAD_NORTH);
+    else if (right) DS4_SET_DPAD(&ds4, DS4_BUTTON_DPAD_EAST);
+    else if (down) DS4_SET_DPAD(&ds4, DS4_BUTTON_DPAD_SOUTH);
+    else if (left) DS4_SET_DPAD(&ds4, DS4_BUTTON_DPAD_WEST);
+
+    return ds4;
+}
+
 // ---------------------------------------------------------------------------
 // VirtualController
 // ---------------------------------------------------------------------------
@@ -71,9 +114,9 @@ std::mutex g_notificationMutex;
 std::unordered_map<void*, VirtualController*> g_targetOwners;
 }
 
-VirtualController::VirtualController(RumbleCallback onRumble)
-    : m_onRumble(std::move(onRumble)) {
-    logging::Logf("[ViGEm] VirtualController ctor");
+VirtualController::VirtualController(EmulationMode mode, RumbleCallback onRumble)
+    : m_mode(mode), m_onRumble(std::move(onRumble)) {
+    logging::Logf("[ViGEm] VirtualController ctor mode=%d", static_cast<int>(m_mode));
     m_client = vigem_alloc();
     if (!m_client) {
         printf("[ViGEm] alloc failed\n");
@@ -91,7 +134,9 @@ VirtualController::VirtualController(RumbleCallback onRumble)
         return;
     }
 
-    m_target = vigem_target_x360_alloc();
+    m_target = (m_mode == EmulationMode::DualShock4)
+        ? vigem_target_ds4_alloc()
+        : vigem_target_x360_alloc();
     if (!m_target) {
         printf("[ViGEm] target alloc failed\n");
         logging::Logf("[ViGEm] target alloc failed");
@@ -108,13 +153,21 @@ VirtualController::VirtualController(RumbleCallback onRumble)
         return;
     }
 
-    printf("[ViGEm] Virtual Xbox 360 controller connected\n");
-    logging::Logf("[ViGEm] Virtual Xbox 360 controller connected");
-
-    err = vigem_target_x360_register_notification(
-        static_cast<PVIGEM_CLIENT>(m_client),
-        static_cast<PVIGEM_TARGET>(m_target),
-        reinterpret_cast<PFN_VIGEM_X360_NOTIFICATION>(&VirtualController::ViGEmNotification));
+    if (m_mode == EmulationMode::DualShock4) {
+        printf("[ViGEm] Virtual DualShock 4 controller connected\n");
+        logging::Logf("[ViGEm] Virtual DualShock 4 controller connected");
+        err = vigem_target_ds4_register_notification(
+            static_cast<PVIGEM_CLIENT>(m_client),
+            static_cast<PVIGEM_TARGET>(m_target),
+            reinterpret_cast<PFN_VIGEM_DS4_NOTIFICATION>(&VirtualController::ViGEmDs4Notification));
+    } else {
+        printf("[ViGEm] Virtual Xbox 360 controller connected\n");
+        logging::Logf("[ViGEm] Virtual Xbox 360 controller connected");
+        err = vigem_target_x360_register_notification(
+            static_cast<PVIGEM_CLIENT>(m_client),
+            static_cast<PVIGEM_TARGET>(m_target),
+            reinterpret_cast<PFN_VIGEM_X360_NOTIFICATION>(&VirtualController::ViGEmNotification));
+    }
     if (!VIGEM_SUCCESS(err)) {
         logging::Logf("[ViGEm] register notification failed err=0x%08X", err);
     } else {
@@ -132,7 +185,10 @@ VirtualController::~VirtualController() {
             std::lock_guard<std::mutex> lock(g_notificationMutex);
             g_targetOwners.erase(m_target);
         }
-        vigem_target_x360_unregister_notification(static_cast<PVIGEM_TARGET>(m_target));
+        if (m_mode == EmulationMode::DualShock4)
+            vigem_target_ds4_unregister_notification(static_cast<PVIGEM_TARGET>(m_target));
+        else
+            vigem_target_x360_unregister_notification(static_cast<PVIGEM_TARGET>(m_target));
     }
     if (m_client && m_target) {
         vigem_target_remove(static_cast<PVIGEM_CLIENT>(m_client),
@@ -147,15 +203,34 @@ VirtualController::~VirtualController() {
 
 void VirtualController::Update(const uint8_t* buf, size_t n) {
     if (!m_valid) return;
-    XUSB_REPORT report = Translate(buf, n);
-    vigem_target_x360_update(static_cast<PVIGEM_CLIENT>(m_client),
-                             static_cast<PVIGEM_TARGET>(m_target),
-                             report);
+    if (m_mode == EmulationMode::DualShock4) {
+        DS4_REPORT report = TranslateDs4(buf, n);
+        vigem_target_ds4_update(static_cast<PVIGEM_CLIENT>(m_client),
+                                static_cast<PVIGEM_TARGET>(m_target),
+                                report);
+    } else {
+        XUSB_REPORT report = Translate(buf, n);
+        vigem_target_x360_update(static_cast<PVIGEM_CLIENT>(m_client),
+                                 static_cast<PVIGEM_TARGET>(m_target),
+                                 report);
+    }
 }
 
 void VirtualController::ViGEmNotification(void* client, void* target, uint8_t largeMotor, uint8_t smallMotor, uint8_t ledNumber) {
     (void)client;
     (void)ledNumber;
+
+    std::lock_guard<std::mutex> lock(g_notificationMutex);
+    auto it = g_targetOwners.find(target);
+    if (it == g_targetOwners.end() || !it->second->m_onRumble)
+        return;
+
+    it->second->m_onRumble(largeMotor, smallMotor);
+}
+
+void VirtualController::ViGEmDs4Notification(void* client, void* target, uint8_t largeMotor, uint8_t smallMotor, uint32_t lightbarColor) {
+    (void)client;
+    (void)lightbarColor;
 
     std::lock_guard<std::mutex> lock(g_notificationMutex);
     auto it = g_targetOwners.find(target);

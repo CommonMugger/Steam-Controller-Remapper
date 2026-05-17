@@ -215,6 +215,16 @@ LRESULT TrayApp::HandleMessage(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             SaveSettings();
             ReconcileAutoMode();
             break;
+        case IDM_OUTPUT_X360:
+            m_controller->SetEmulationMode(EmulationMode::Xbox360);
+            SaveSettings();
+            ReconcileAutoMode();
+            break;
+        case IDM_OUTPUT_DS4:
+            m_controller->SetEmulationMode(EmulationMode::DualShock4);
+            SaveSettings();
+            ReconcileAutoMode();
+            break;
         case IDM_EXIT:
             m_controller->DisableGameMode();
             PostQuitMessage(0);
@@ -400,6 +410,9 @@ void TrayApp::LoadSettings() {
     m_controller->SetBackButtonsEnabled  (readBool(L"BackButtons",     false));
     m_controller->SetUseLeftTrackpad     (readBool(L"UseLeftTrackpad", false));
     m_autoEnableSteamlessMode            = readBool(L"AutoEnableSteamlessMode", true);
+    m_controller->SetEmulationMode(readBool(L"UseDs4Emulation", false)
+        ? EmulationMode::DualShock4
+        : EmulationMode::Xbox360);
 
     RegCloseKey(key);
 }
@@ -421,6 +434,8 @@ void TrayApp::SaveSettings() {
     writeBool(L"BackButtons",     m_controller->IsBackButtonsEnabled());
     writeBool(L"UseLeftTrackpad", m_controller->IsUseLeftTrackpad());
     writeBool(L"AutoEnableSteamlessMode", m_autoEnableSteamlessMode);
+    writeBool(L"UseDs4Emulation",
+              m_controller->GetEmulationMode() == EmulationMode::DualShock4);
 
     RegCloseKey(key);
 }
@@ -433,6 +448,7 @@ void TrayApp::ShowContextMenu() {
     bool leftTrackpad   = m_controller->IsUseLeftTrackpad();
     bool startupOn      = IsStartupEnabled();
     bool canEnableMode  = connected && !m_steamRunning;
+    bool ds4Mode        = m_controller->GetEmulationMode() == EmulationMode::DualShock4;
 
     HMENU menu = CreatePopupMenu();
 
@@ -444,6 +460,14 @@ void TrayApp::ShowContextMenu() {
 
     UINT autoEnableFlags = MF_STRING | (m_autoEnableSteamlessMode ? MF_CHECKED : MF_UNCHECKED);
     AppendMenuW(menu, autoEnableFlags, IDM_AUTOENABLE, L"Auto-enable Steamless Mode");
+
+    AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+
+    UINT x360Flags = MF_STRING | (ds4Mode ? MF_UNCHECKED : MF_CHECKED);
+    AppendMenuW(menu, x360Flags, IDM_OUTPUT_X360, L"Emulate Xbox 360 Controller");
+
+    UINT ds4Flags = MF_STRING | (ds4Mode ? MF_CHECKED : MF_UNCHECKED);
+    AppendMenuW(menu, ds4Flags, IDM_OUTPUT_DS4, L"Emulate DualShock 4");
 
     UINT trackpadFlags = MF_STRING | (trackpadOn ? MF_CHECKED : MF_UNCHECKED);
     AppendMenuW(menu, trackpadFlags, IDM_TRACKPAD, L"Enable Trackpad Mouse");

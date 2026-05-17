@@ -49,6 +49,7 @@ void ControllerManager::EnableGameMode() {
 
     SteamController* ctrl = g_ctrl.get();
     m_virtual = std::make_unique<VirtualController>(
+        m_emulationMode,
         [ctrl](uint8_t largeMotor, uint8_t smallMotor) {
             if (ctrl)
                 ctrl->SetRumble(largeMotor, smallMotor);
@@ -97,6 +98,23 @@ void ControllerManager::SetBackButtonsEnabled(bool enabled) {
 void ControllerManager::SetUseLeftTrackpad(bool enabled) {
     m_useLeftTrackpad = enabled;
     m_trackpad.SetUseLeftTrackpad(enabled);
+}
+
+void ControllerManager::SetEmulationMode(EmulationMode mode) {
+    if (m_emulationMode == mode)
+        return;
+
+    const bool wasActive = m_gameModeActive;
+    logging::Logf("[ControllerManager] SetEmulationMode old=%d new=%d active=%d",
+                  static_cast<int>(m_emulationMode),
+                  static_cast<int>(mode),
+                  wasActive ? 1 : 0);
+    m_emulationMode = mode;
+
+    if (wasActive) {
+        DisableGameMode();
+        EnableGameMode();
+    }
 }
 
 void ControllerManager::TryOpen() {

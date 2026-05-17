@@ -1,12 +1,11 @@
 #pragma once
 #include "TrackpadMouse.h"
+#include "VirtualController.h"
 #include <functional>
 #include <thread>
 #include <atomic>
 #include <memory>
 #include <cstdint>
-
-class VirtualController;
 
 // Manages the Steam Controller lifecycle: device discovery, lizard mode
 // disable/enable, and the heartbeat that keeps lizard mode off.
@@ -33,12 +32,14 @@ public:
     void SetTrackpadMouseEnabled(bool enabled);
     void SetBackButtonsEnabled(bool enabled);
     void SetUseLeftTrackpad(bool enabled);
+    void SetEmulationMode(EmulationMode mode);
 
     bool IsConnected()             const { return m_connected; }
     bool IsGameModeActive()        const { return m_gameModeActive; }
     bool IsTrackpadMouseEnabled()  const { return m_trackpadMouseEnabled; }
     bool IsBackButtonsEnabled()    const { return m_backButtonsEnabled; }
     bool IsUseLeftTrackpad()       const { return m_useLeftTrackpad; }
+    EmulationMode GetEmulationMode() const { return m_emulationMode; }
 
 private:
     void TryOpen();
@@ -53,6 +54,7 @@ private:
     bool                               m_trackpadMouseEnabled = true;
     bool                               m_backButtonsEnabled   = false;
     bool                               m_useLeftTrackpad      = false;
+    EmulationMode                      m_emulationMode        = EmulationMode::Xbox360;
     std::unique_ptr<VirtualController> m_virtual;
     TrackpadMouse                      m_trackpad;
     std::thread                        m_readThread;
