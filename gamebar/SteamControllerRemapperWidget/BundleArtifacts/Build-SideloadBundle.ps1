@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
     [string]$OutputFolder,
+    [string]$ZipPath,
     [string]$CertificateThumbprint = 'C212808A52CEC7D75E312D7880CED6D6188A4BE1'
 )
 
@@ -23,17 +24,27 @@ function Find-PackageFolder {
 }
 
 function Export-PublicCertificate([string]$Thumbprint, [string]$DestinationPath) {
+    $fallbackCertificate = Get-ChildItem -Path $PSScriptRoot -Recurse -Filter *.cer -File -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -First 1
+
     $certificate =
         (Get-ChildItem Cert:\CurrentUser\My -ErrorAction SilentlyContinue | Where-Object { $_.Thumbprint -eq $Thumbprint } | Select-Object -First 1)
     if (-not $certificate) {
         $certificate =
             (Get-ChildItem Cert:\LocalMachine\My -ErrorAction SilentlyContinue | Where-Object { $_.Thumbprint -eq $Thumbprint } | Select-Object -First 1)
     }
+    if ($certificate) {
+        Export-Certificate -Cert $certificate -FilePath $DestinationPath -Force | Out-Null
+        return
+    }
+    if ($fallbackCertificate) {
+        Copy-Item -LiteralPath $fallbackCertificate.FullName -Destination $DestinationPath -Force
+        return
+    }
     if (-not $certificate) {
         throw "Certificate with thumbprint $Thumbprint was not found in CurrentUser\\My or LocalMachine\\My."
     }
-
-    Export-Certificate -Cert $certificate -FilePath $DestinationPath -Force | Out-Null
 }
 
 function Find-DesktopExe {
@@ -47,7 +58,10 @@ function Find-DesktopExe {
 
 $scriptRoot = Split-Path -Parent $PSCommandPath
 if ([string]::IsNullOrWhiteSpace($OutputFolder)) {
-    $OutputFolder = Join-Path $scriptRoot 'SteamControllerRemapperWidget-Sideload'
+    $OutputFolder = Join-Path $scriptRoot 'SteamControllerRemapper-Installer'
+}
+if ([string]::IsNullOrWhiteSpace($ZipPath)) {
+    $ZipPath = Join-Path $scriptRoot 'SteamControllerRemapper-Installer.zip'
 }
 
 $packageFolder = Find-PackageFolder
@@ -77,5 +91,12 @@ Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'README.md') -Destination (Join-
 $certificatePath = Join-Path $OutputFolder 'SteamControllerRemapperWidget.cer'
 Export-PublicCertificate -Thumbprint $CertificateThumbprint -DestinationPath $certificatePath
 
-Write-Host "Created widget sideload bundle at:"
+if (Test-Path $ZipPath) {
+    Remove-Item -LiteralPath $ZipPath -Force
+}
+Compress-Archive -Path (Join-Path $OutputFolder '*') -DestinationPath $ZipPath -Force
+
+Write-Host "Created installer bundle at:"
 Write-Host $OutputFolder
+Write-Host "Created installer archive at:"
+Write-Host $ZipPath

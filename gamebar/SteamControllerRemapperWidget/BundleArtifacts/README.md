@@ -1,6 +1,6 @@
-# Steam Controller Remapper Sideload Bundle
+# Steam Controller Remapper Installer Bundle
 
-This folder is a GitHub-style sideload package for both:
+This folder is the single installer bundle for both:
 
 - the desktop remapper app
 - the Xbox Game Bar widget
@@ -19,7 +19,7 @@ This folder is a GitHub-style sideload package for both:
 2. Right-click `Install-SteamControllerRemapper.ps1`.
 3. Choose `Run with PowerShell`.
 4. Accept the elevation prompt.
-5. Let the script install the desktop app and widget.
+5. Let the script install the desktop app, enable Start with Windows, and install the widget.
 6. Open Xbox Game Bar with `Win + G`.
 7. Add the `Steam Controller Remapper` widget from the Widgets menu.
 
@@ -31,6 +31,10 @@ Run this from the repo after rebuilding the widget package:
 powershell.exe -ExecutionPolicy Bypass -File .\gamebar\SteamControllerRemapperWidget\BundleArtifacts\Build-SideloadBundle.ps1
 ```
 
-The script stages a fresh bundle in:
+The script stages a fresh installer folder in:
 
-`gamebar\SteamControllerRemapperWidget\BundleArtifacts\SteamControllerRemapperWidget-Sideload`
+`gamebar\SteamControllerRemapperWidget\BundleArtifacts\SteamControllerRemapper-Installer`
+
+and a matching archive:
+
+`gamebar\SteamControllerRemapperWidget\BundleArtifacts\SteamControllerRemapper-Installer.zip`

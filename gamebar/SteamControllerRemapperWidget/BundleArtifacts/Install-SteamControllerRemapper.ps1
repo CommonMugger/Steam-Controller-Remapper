@@ -76,6 +76,19 @@ function Install-DesktopApp([string]$SourceExePath) {
     return $targetExePath
 }
 
+function Enable-Startup([string]$InstalledExePath) {
+    $runKeyPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+    $valueName = 'Steam Controller Remapper'
+    $command = '"' + $InstalledExePath + '"'
+
+    if (-not (Test-Path $runKeyPath)) {
+        New-Item -Path $runKeyPath -Force | Out-Null
+    }
+
+    Set-ItemProperty -Path $runKeyPath -Name $valueName -Value $command -Type String
+    Write-Host 'Enabled Start with Windows for the current user.'
+}
+
 Ensure-Elevated
 
 $bundleRoot = Split-Path -Parent $PSCommandPath
@@ -101,6 +114,7 @@ Write-Host 'Steam Controller Remapper installer'
 Write-Host "Bundle root: $bundleRoot"
 
 $installedExePath = Install-DesktopApp -SourceExePath $desktopExe.FullName
+Enable-Startup -InstalledExePath $installedExePath
 
 Import-BundleCertificate -CertificateFile $certificateFile
 
@@ -125,3 +139,4 @@ Write-Host 'Next steps:'
 Write-Host '1. Open Xbox Game Bar with Win+G.'
 Write-Host '2. Open the Widgets menu.'
 Write-Host '3. Add "Steam Controller Remapper".'
+Write-Host '4. If you use Xbox Mode, confirm Windows shows it as a Startup app.'
