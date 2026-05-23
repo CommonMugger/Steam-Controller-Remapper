@@ -43,8 +43,19 @@ public:
     void RecoverIfInputStalled();
 
     // Toggle game mode on/off. No-op if controller is not connected.
-    void EnableGameMode();
+    // When steamOwnsLizard is true, the controller is already in non-lizard
+    // mode because Steam disabled it (gamepad action set is active), so we
+    // must NOT send our own DisableLizardMode/heartbeat or re-enable it on
+    // teardown — Steam keeps full control of the lizard state.
+    void EnableGameMode(bool steamOwnsLizard = false);
     void DisableGameMode();
+
+    // True when the vendor HID interface has produced a 0x42 STATE report
+    // recently. While Steam is running, this is the authoritative signal
+    // that Steam has switched the controller into its gamepad action set
+    // (lizard mode off). In lizard / Steam-desktop mode, no STATE reports
+    // are emitted on this interface and this returns false.
+    bool IsReceivingStateReports() const;
 
     void SetTrackpadMouseEnabled(bool enabled);
     void SetBackButtonsEnabled(bool enabled);
@@ -74,6 +85,7 @@ private:
     StateChangedFn                     m_onStateChanged;
     bool                               m_connected            = false;
     bool                               m_gameModeActive       = false;
+    bool                               m_steamOwnsLizard      = false;
     bool                               m_trackpadMouseEnabled = true;
     bool                               m_backButtonsEnabled   = false;
     bool                               m_useLeftTrackpad      = false;

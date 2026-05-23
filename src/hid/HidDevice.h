@@ -11,6 +11,12 @@ public:
     // Pass usagePage=0 to return all matching interfaces.
     static std::vector<std::wstring> Enumerate(uint16_t vid, uint16_t pid, uint16_t usagePage = 0);
 
+    // True when the HID interface at `path` declares the given input report
+    // ID in its descriptor. Useful for picking the specific vendor collection
+    // that carries the report we care about when a device exposes several
+    // vendor-usage-page collections (e.g. the SC2 dongle).
+    static bool HasInputReportId(const std::wstring& path, uint8_t reportId);
+
     HidDevice() = default;
     ~HidDevice() { Close(); }
     HidDevice(const HidDevice&) = delete;

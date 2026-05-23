@@ -34,31 +34,37 @@ static void BuildCmd(uint8_t (&buf)[64], uint8_t cmd,
 
 bool SteamController::Open() {
     logging::Logf("[SteamController] Open begin");
-    constexpr uint32_t kProbeTimeoutMs = 80;
-    for (uint16_t pid : { SC2026_PID, SC2026_DONGLE_PID }) {
-        auto paths = HidDevice::Enumerate(VALVE_VID, pid, VENDOR_USAGE_PAGE);
-        logging::Logf("[SteamController] Enumerate pid=%04X paths=%zu", pid, paths.size());
-        if (paths.empty()) continue;
+    constexpr uint32_t kProbeTimeoutMs = 200;
 
-        // For the wired controller there is only one interface; for the dongle
-        // there are up to four slots (one per paired controller). Try each in
-        // order and use the first that produces a live input report.
-        for (auto const& path : paths) {
-            logging::Logf("[SteamController] Trying path pid=%04X path=%s",
-                          pid, logging::Narrow(path).c_str());
-            if (!m_device.Open(path)) continue;
+    for (uint16_t pid : { SC2026_PID, SC2026_DONGLE_PID }) {
+        // Enumerate ALL interfaces for this VID/PID (no usage page filter).
+        // This catches interfaces regardless of their usage page assignment.
+        auto allPaths = HidDevice::Enumerate(VALVE_VID, pid, /*usagePage=*/0);
+        logging::Logf("[SteamController] Enumerate pid=%04X total paths=%zu", pid, allPaths.size());
+        for (size_t i = 0; i < allPaths.size(); ++i) {
+            auto const& path = allPaths[i];
+            logging::Logf("[SteamController] Path[%zu] = %s", i, logging::Narrow(path).c_str());
+        }
+
+        // Try each path: open, read, and check for STATE report.
+        for (size_t i = 0; i < allPaths.size(); ++i) {
+            auto const& path = allPaths[i];
+            if (!m_device.Open(path)) {
+                logging::Logf("[SteamController] Path[%zu] Open failed error=%lu", i, GetLastError());
+                continue;
+            }
 
             uint8_t buf[64];
             size_t n = m_device.ReadInputReport(buf, sizeof(buf), kProbeTimeoutMs);
-            if (n > 0 && buf[0] == REPORT_STATE) {
-                printf("Active interface found for PID=%04X.\n", pid);
-                logging::Logf("[SteamController] Active interface pid=%04X reportBytes=%zu reportId=0x%02X",
-                              pid, n, buf[0]);
+            logging::Logf("[SteamController] Path[%zu] n=%zu reportId=0x%02X",
+                          i, n, n > 0 ? buf[0] : 0);
+            // Accept either the standard STATE report (0x42) or the dongle's variant (0x45).
+            // Both are 54-byte state reports; only the report ID differs.
+            if (n > 0 && (buf[0] == REPORT_STATE || buf[0] == 0x45)) {
+                logging::Logf("[SteamController] Active interface pid=%04X pathIdx=%zu reportId=0x%02X",
+                              pid, i, buf[0]);
                 return true;
             }
-
-            logging::Logf("[SteamController] Path rejected pid=%04X reportBytes=%zu reportId=0x%02X",
-                          pid, n, n > 0 ? buf[0] : 0);
 
             m_device.Close();
         }

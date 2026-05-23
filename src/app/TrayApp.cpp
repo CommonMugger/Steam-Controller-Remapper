@@ -284,6 +284,73 @@ static std::string ReadWidgetResponseRequestId(const std::wstring& widgetDir) {
     return TrimAscii(lines[0]);
 }
 
+static std::wstring GetProcessPathById(DWORD pid);
+
+// True when the foreground window belongs to a process that matches a
+// known Steam-installed game. Used to decide that Steam itself should
+// keep control of the controller (rather than us taking over with ViGEm),
+// because the game on screen is presumably consuming Steam Input directly.
+//
+// Returning false here does NOT mean "definitely desktop" — it only means
+// we couldn't positively identify a Steam game in the foreground. The
+// actual signal that the controller is in the gamepad action set comes
+// from ControllerManager::IsReceivingStateReports().
+static bool IsSteamGameInForeground() {
+    HWND fg = GetForegroundWindow();
+    if (!fg)
+        return false;
+
+    DWORD pid = 0;
+    GetWindowThreadProcessId(fg, &pid);
+    if (pid == 0 || pid == GetCurrentProcessId())
+        return false;
+
+    const std::wstring processPath = GetProcessPathById(pid);
+    if (processPath.empty())
+        return false;
+
+    // steam.exe / steamwebhelper.exe are never the game itself.
+    auto endsWithI = [](const std::wstring& s, const wchar_t* suffix) {
+        const size_t sn = s.size();
+        const size_t fn = wcslen(suffix);
+        return sn >= fn && _wcsicmp(s.c_str() + sn - fn, suffix) == 0;
+    };
+    if (endsWithI(processPath, L"\\steam.exe") ||
+        endsWithI(processPath, L"\\steamwebhelper.exe")) {
+        return false;
+    }
+
+    const std::wstring match = SteamLibrary::MatchProcessToInstalledGame(processPath);
+    return !match.empty();
+}
+
+// True when the foreground window belongs to Steam itself (steam.exe or
+// steamwebhelper.exe). This catches both Big Picture mode and the normal
+// Steam client. Unlike IsSteamGameInForeground, this does NOT check for
+// Steam-installed games — it's specifically for Steam's own UI.
+static bool IsSteamInForeground() {
+    HWND fg = GetForegroundWindow();
+    if (!fg)
+        return false;
+
+    DWORD pid = 0;
+    GetWindowThreadProcessId(fg, &pid);
+    if (pid == 0 || pid == GetCurrentProcessId())
+        return false;
+
+    const std::wstring processPath = GetProcessPathById(pid);
+    if (processPath.empty())
+        return false;
+
+    auto endsWithI = [](const std::wstring& s, const wchar_t* suffix) {
+        const size_t sn = s.size();
+        const size_t fn = wcslen(suffix);
+        return sn >= fn && _wcsicmp(s.c_str() + sn - fn, suffix) == 0;
+    };
+    return endsWithI(processPath, L"\\steam.exe") ||
+           endsWithI(processPath, L"\\steamwebhelper.exe");
+}
+
 static bool IsProcessRunningByName(const wchar_t* processName) {
     HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (snapshot == INVALID_HANDLE_VALUE)
@@ -432,6 +499,9 @@ bool TrayApp::Init(HINSTANCE hInstance) {
     m_controller = std::make_unique<ControllerManager>(
         [this](bool connected, bool gameModeActive, bool vigemMissing) {
             UpdateTrayIcon(connected, gameModeActive, vigemMissing);
+            // React immediately to connection state changes rather than
+            // waiting for the next timer tick (which can be 500ms away).
+            ReconcileAutoMode();
         });
     m_ipcServer = std::make_unique<RemapIpcServer>(
         [this](const std::string& request) { return HandleIpcRequest(request); });
@@ -496,10 +566,16 @@ LRESULT TrayApp::HandleMessage(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_COMMAND:
         switch (LOWORD(wp)) {
         case IDM_TOGGLE:
-            if (m_controller->IsGameModeActive())
+            if (m_controller->IsGameModeActive()) {
                 m_controller->DisableGameMode();
-            else if (!m_steamRunning)
-                m_controller->EnableGameMode();
+            } else if (m_controller->IsConnected()) {
+                // If Steam is running and currently has the controller on the
+                // gamepad action set (state reports flowing), Steam already
+                // disabled lizard mode — don't fight it.
+                const bool steamOwnsLizard = m_steamRunning &&
+                                             m_controller->IsReceivingStateReports();
+                m_controller->EnableGameMode(steamOwnsLizard);
+            }
             break;
         case IDM_TRACKPAD:
             m_controller->SetTrackpadMouseEnabled(!m_controller->IsTrackpadMouseEnabled());
@@ -564,13 +640,10 @@ LRESULT TrayApp::HandleMessage(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             // Retry controller discovery on the timer as well. On cold boot the
             // first open attempt can race HID initialization, and there may be
             // no later arrival event if the controller was already present.
-            const ULONGLONG now = GetTickCount64();
-            if (m_controller->IsConnected() ||
-                (now - m_lastReconnectAttemptTick) >= RECONNECT_BACKOFF_MS) {
-                m_lastReconnectAttemptTick = now;
-                m_controller->OnDeviceChange();
-                ReconcileAutoMode();
-            }
+            // The 1-second timer interval itself is the rate limit; no need
+            // for an additional backoff that delays the first retry.
+            m_controller->OnDeviceChange();
+            ReconcileAutoMode();
 
             bool steamRunning = IsSteamRunning();
             if (steamRunning != m_steamRunning) {
@@ -752,13 +825,62 @@ void TrayApp::ReconcileAutoMode() {
     if (!m_controller)
         return;
 
-    bool shouldAutoEnable = m_autoEnableSteamlessMode &&
-                            m_controller->IsConnected() &&
-                            !m_steamRunning;
+    // Auto-enable is the master switch. When the user opts out, never touch
+    // game mode automatically — they drive it via IDM_TOGGLE.
+    if (!m_autoEnableSteamlessMode)
+        return;
 
-    if (shouldAutoEnable && !m_controller->IsGameModeActive()) {
-        m_controller->EnableGameMode();
-    } else if (m_steamRunning && m_controller->IsGameModeActive()) {
+    const bool connected   = m_controller->IsConnected();
+    const bool gameModeOn  = m_controller->IsGameModeActive();
+
+    logging::Logf("[TrayApp] ReconcileAutoMode connected=%d gameMode=%d steamRunning=%d",
+                  connected ? 1 : 0, gameModeOn ? 1 : 0, m_steamRunning ? 1 : 0);
+
+    if (!connected) {
+        if (gameModeOn)
+            m_controller->DisableGameMode();
+        return;
+    }
+
+    if (!m_steamRunning) {
+        // Standalone: Steam isn't here to drive the controller, so we take
+        // over completely (disable lizard ourselves, drive ViGEm).
+        if (!gameModeOn)
+            m_controller->EnableGameMode(/*steamOwnsLizard=*/false);
+        return;
+    }
+
+    // Steam is running. If a Steam game owns the foreground, Steam already
+    // delivers gamepad input to it via Steam Input — stay out of the way.
+    if (IsSteamGameInForeground()) {
+        if (gameModeOn)
+            m_controller->DisableGameMode();
+        return;
+    }
+
+    // Steam is running but no Steam game is in the foreground. This includes
+    // Steam Big Picture mode and the Steam client window — Steam is consuming
+    // controller input in both cases. Do NOT enable our emulation while Steam
+    // is in the foreground, even if IsReceivingStateReports() returns true
+    // (which can happen when Steam is polling in lizard mode or from
+    // background activity). Let Steam handle the input; we'll take over only
+    // when no Steam UI is in the foreground.
+    if (IsSteamInForeground()) {
+        if (gameModeOn)
+            m_controller->DisableGameMode();
+        return;
+    }
+
+    // Steam is running and not in the foreground. The trigger is whether
+    // Steam has the controller on the gamepad action set (signaled by STATE
+    // reports on the vendor interface). When the user holds Start to switch
+    // into gamepad mode, reports start flowing; when they switch back to
+    // desktop mode, they stop and we drop ViGEm.
+    const bool steamGamepadActionSet = m_controller->IsReceivingStateReports();
+
+    if (steamGamepadActionSet && !gameModeOn) {
+        m_controller->EnableGameMode(/*steamOwnsLizard=*/true);
+    } else if (!steamGamepadActionSet && gameModeOn) {
         m_controller->DisableGameMode();
     }
 }
@@ -1162,7 +1284,7 @@ void TrayApp::ShowContextMenu() {
     bool trackpadOn     = m_controller->IsTrackpadMouseEnabled();
     bool leftTrackpad   = m_controller->IsUseLeftTrackpad();
     bool startupOn      = IsStartupEnabled();
-    bool canEnableMode  = connected && !m_steamRunning;
+    bool canEnableMode  = connected;
     bool canConfigure   = !m_steamRunning;
     bool ds4Mode        = m_controller->GetEmulationMode() == EmulationMode::DualShock4;
 

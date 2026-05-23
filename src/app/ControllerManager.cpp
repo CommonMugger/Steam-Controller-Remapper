@@ -4,6 +4,9 @@
 #include "steam/SteamController.h"
 #include <memory>
 #include <vector>
+#include <windows.h>
+
+static constexpr std::uint64_t kStateReportStaleMs = 750;
 
 namespace {
 void AppendChordToken(std::wstring& text, const wchar_t* token) {
@@ -47,13 +50,20 @@ void ControllerManager::OnResume() {
     TryOpen();
 }
 
-void ControllerManager::EnableGameMode() {
-    logging::Logf("[ControllerManager] EnableGameMode connected=%d active=%d",
-                  m_connected ? 1 : 0, m_gameModeActive ? 1 : 0);
+void ControllerManager::EnableGameMode(bool steamOwnsLizard) {
+    logging::Logf("[ControllerManager] EnableGameMode connected=%d active=%d steamOwnsLizard=%d",
+                  m_connected ? 1 : 0, m_gameModeActive ? 1 : 0, steamOwnsLizard ? 1 : 0);
     if (!m_connected || m_gameModeActive) return;
-    if (!g_ctrl->DisableLizardMode()) {
-        logging::Logf("[ControllerManager] EnableGameMode failed at DisableLizardMode");
-        return;
+
+    // When Steam owns lizard, the controller is already in non-lizard mode
+    // (Steam disabled it when it switched to the gamepad action set). Sending
+    // our own CLEAR_DIGITAL_MAPPINGS/SET_SETTINGS here is unnecessary and would
+    // fight Steam's own heartbeat. Skip it.
+    if (!steamOwnsLizard) {
+        if (!g_ctrl->DisableLizardMode()) {
+            logging::Logf("[ControllerManager] EnableGameMode failed at DisableLizardMode");
+            return;
+        }
     }
 
     SteamController* ctrl = g_ctrl.get();
@@ -70,32 +80,46 @@ void ControllerManager::EnableGameMode() {
         logging::Logf("[ControllerManager] EnableGameMode failed at VirtualController valid=0 missing=%d",
                       missing ? 1 : 0);
         m_virtual.reset();
-        g_ctrl->EnableLizardMode();
+        if (!steamOwnsLizard)
+            g_ctrl->EnableLizardMode();
         if (missing) m_onStateChanged(m_connected, m_gameModeActive, /*vigemMissing=*/true);
         return;
     }
 
+    m_steamOwnsLizard = steamOwnsLizard;
     m_gameModeActive = true;
     m_trackpad.Reset();
     m_trackpad.SetTrackpadEnabled(m_trackpadMouseEnabled);
     m_trackpad.SetBackButtonsEnabled(m_backButtonsEnabled);
     m_trackpad.SetUseLeftTrackpad(m_useLeftTrackpad);
     m_paddleOverlay.SetBindings(m_paddleActions);
-    StartReadLoop();
+    // Read loop is already running (started from TryOpen); flipping
+    // m_gameModeActive is enough to start forwarding reports to the
+    // virtual controller / trackpad / paddle overlay.
     logging::Logf("[ControllerManager] EnableGameMode success");
     m_onStateChanged(m_connected, m_gameModeActive, false);
 }
 
 void ControllerManager::DisableGameMode() {
-    logging::Logf("[ControllerManager] DisableGameMode active=%d", m_gameModeActive ? 1 : 0);
+    logging::Logf("[ControllerManager] DisableGameMode active=%d steamOwnsLizard=%d",
+                  m_gameModeActive ? 1 : 0, m_steamOwnsLizard ? 1 : 0);
     if (!m_gameModeActive) return;
-    StopReadLoop();
+    m_gameModeActive = false;
     m_trackpad.Reset();
     m_paddleOverlay.Reset();
     m_virtual.reset();
-    g_ctrl->EnableLizardMode();
-    m_gameModeActive = false;
+    if (!m_steamOwnsLizard)
+        g_ctrl->EnableLizardMode();
+    m_steamOwnsLizard = false;
     m_onStateChanged(m_connected, m_gameModeActive, false);
+}
+
+bool ControllerManager::IsReceivingStateReports() const {
+    const std::uint64_t last = m_lastReportTickMs.load(std::memory_order_relaxed);
+    if (last == 0)
+        return false;
+    const std::uint64_t now = GetTickCount64();
+    return (now - last) < kStateReportStaleMs;
 }
 
 void ControllerManager::SetTrackpadMouseEnabled(bool enabled) {
@@ -164,6 +188,8 @@ void ControllerManager::TryOpen() {
     if (!g_ctrl) g_ctrl = std::make_unique<SteamController>();
     if (g_ctrl->Open()) {
         m_connected = true;
+        m_lastReportTickMs.store(0, std::memory_order_relaxed);
+        StartReadLoop();
         logging::Logf("[ControllerManager] TryOpen success");
         m_onStateChanged(m_connected, m_gameModeActive, false);
     } else {
@@ -176,12 +202,14 @@ void ControllerManager::Close(bool restoreLizard) {
     m_virtual.reset();
     m_paddleOverlay.Reset();
     if (g_ctrl) {
-        if (restoreLizard && m_gameModeActive)
+        if (restoreLizard && m_gameModeActive && !m_steamOwnsLizard)
             g_ctrl->EnableLizardMode();
         g_ctrl->Close();
     }
-    m_connected      = false;
-    m_gameModeActive = false;
+    m_connected        = false;
+    m_gameModeActive   = false;
+    m_steamOwnsLizard  = false;
+    m_lastReportTickMs.store(0, std::memory_order_relaxed);
     m_onStateChanged(m_connected, m_gameModeActive, false);
 }
 
@@ -201,15 +229,28 @@ void ControllerManager::ReadLoop() {
     while (m_readRunning) {
         size_t n = g_ctrl->ReadReport(buf, sizeof(buf), /*timeoutMs=*/32);
         if (n == 0) continue;
-        if (buf[0] != SteamController::REPORT_STATE) continue;
+        // Accept both standard STATE (0x42) and dongle variant (0x45).
+        // Both are 54-byte state reports; only the report ID differs.
+        const uint8_t reportId = buf[0];
+        if (reportId != SteamController::REPORT_STATE && reportId != 0x45) continue;
+
+        // Record liveness for IsReceivingStateReports(). When Steam is
+        // running and we have not disabled lizard ourselves, this is the
+        // signal that Steam has switched the controller into the gamepad
+        // action set.
+        m_lastReportTickMs.store(GetTickCount64(), std::memory_order_relaxed);
+        logging::Logf("[ControllerManager] ReadLoop stateReport reportId=0x%02X", reportId);
+
         {
             std::lock_guard<std::mutex> lock(m_lastReportMutex);
             m_lastReportSize = (std::min)(n, m_lastReport.size());
             memcpy(m_lastReport.data(), buf, m_lastReportSize);
         }
-        if (m_virtual) m_virtual->Update(buf, n);
-        m_paddleOverlay.Update(buf, n);
-        m_trackpad.Update(buf, n);
+        if (m_gameModeActive) {
+            if (m_virtual) m_virtual->Update(buf, n);
+            m_paddleOverlay.Update(buf, n);
+            m_trackpad.Update(buf, n);
+        }
     }
 }
 

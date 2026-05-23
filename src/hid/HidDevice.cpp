@@ -75,6 +75,41 @@ std::vector<std::wstring> HidDevice::Enumerate(uint16_t vid, uint16_t pid, uint1
     return paths;
 }
 
+bool HidDevice::HasInputReportId(const std::wstring& path, uint8_t reportId) {
+    HANDLE h = CreateFileW(path.c_str(), 0,
+                           FILE_SHARE_READ | FILE_SHARE_WRITE,
+                           nullptr, OPEN_EXISTING, 0, nullptr);
+    if (h == INVALID_HANDLE_VALUE)
+        return false;
+
+    bool found = false;
+    PHIDP_PREPARSED_DATA pre = nullptr;
+    if (HidD_GetPreparsedData(h, &pre)) {
+        HIDP_CAPS caps{};
+        if (HidP_GetCaps(pre, &caps) == HIDP_STATUS_SUCCESS) {
+            if (!found && caps.NumberInputButtonCaps > 0) {
+                std::vector<HIDP_BUTTON_CAPS> bcaps(caps.NumberInputButtonCaps);
+                USHORT n = caps.NumberInputButtonCaps;
+                if (HidP_GetButtonCaps(HidP_Input, bcaps.data(), &n, pre) == HIDP_STATUS_SUCCESS) {
+                    for (USHORT i = 0; i < n && !found; ++i)
+                        if (bcaps[i].ReportID == reportId) found = true;
+                }
+            }
+            if (!found && caps.NumberInputValueCaps > 0) {
+                std::vector<HIDP_VALUE_CAPS> vcaps(caps.NumberInputValueCaps);
+                USHORT n = caps.NumberInputValueCaps;
+                if (HidP_GetValueCaps(HidP_Input, vcaps.data(), &n, pre) == HIDP_STATUS_SUCCESS) {
+                    for (USHORT i = 0; i < n && !found; ++i)
+                        if (vcaps[i].ReportID == reportId) found = true;
+                }
+            }
+        }
+        HidD_FreePreparsedData(pre);
+    }
+    CloseHandle(h);
+    return found;
+}
+
 // ---------------------------------------------------------------------------
 // Move semantics
 // ---------------------------------------------------------------------------
