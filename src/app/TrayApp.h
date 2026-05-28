@@ -85,7 +85,7 @@ private:
     static constexpr UINT STEAM_POLL_MS     = 1000;
     static constexpr UINT TIMER_SMAPI_WATCH = 3;
     static constexpr UINT SMAPI_WATCH_MS    = 250;
-    static constexpr ULONGLONG SMAPI_REINIT_GRACE_MS = 30000;
+    static constexpr ULONGLONG SMAPI_REINIT_GRACE_MS = 10000;
     static constexpr UINT RECONNECT_BACKOFF_MS  = 3000;
     static constexpr ULONGLONG GAME_ACTIVE_GRACE_MS  = 30000;
 };
