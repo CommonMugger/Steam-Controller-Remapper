@@ -826,13 +826,8 @@ LRESULT TrayApp::HandleMessage(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             bool steamRunning = IsSteamRunning();
             if (steamRunning != m_steamRunning) {
                 m_steamRunning = steamRunning;
-                if (m_steamRunning) {
-                    m_steamFirstSeenMs = GetTickCount64();
-                    if (m_paddleConfigWindow)
-                        m_paddleConfigWindow->Close();
-                } else {
-                    m_steamFirstSeenMs = 0;
-                }
+                if (m_steamRunning && m_paddleConfigWindow)
+                    m_paddleConfigWindow->Close();
                 ReconcileAutoMode();
             }
 
@@ -1016,14 +1011,6 @@ void TrayApp::ReconcileAutoMode() {
 
     if (shouldAutoEnable && !m_controller->IsGameModeActive()) {
         m_controller->EnableGameMode();
-    } else if (m_steamRunning && m_controller->IsGameModeActive()) {
-        const ULONGLONG now = GetTickCount64();
-        const bool steamSettled = m_steamFirstSeenMs > 0 &&
-            (now - m_steamFirstSeenMs) >= STEAM_APPEAR_GRACE_MS;
-        const bool gameRecentlyActive = m_lastGameDetectedMs > 0 &&
-            (now - m_lastGameDetectedMs) < GAME_ACTIVE_GRACE_MS;
-        if (steamSettled && !gameRecentlyActive)
-            m_controller->DisableGameMode();
     }
 }
 

@@ -61,7 +61,6 @@ private:
     bool                               m_reportSignatureChecked  = false;
     ULONGLONG                          m_lastReconnectAttemptTick = 0;
     ULONGLONG                          m_lastGameDetectedMs       = 0;
-    ULONGLONG                          m_steamFirstSeenMs         = 0;
     std::string                        m_lastWidgetStateJson;
     std::string                        m_lastWidgetRequestId;
     std::wstring                       m_savedControllerReportSignature;
@@ -84,5 +83,4 @@ private:
     static constexpr UINT STEAM_POLL_MS    = 1000;
     static constexpr UINT RECONNECT_BACKOFF_MS  = 3000;
     static constexpr ULONGLONG GAME_ACTIVE_GRACE_MS  = 30000;
-    static constexpr ULONGLONG STEAM_APPEAR_GRACE_MS = 60000;
 };
