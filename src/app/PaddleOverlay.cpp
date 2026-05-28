@@ -68,6 +68,32 @@ const char* ActionTypeName(PaddleActionType type) {
     return "unknown";
 }
 
+static void SendKeyEvent(uint16_t vk, DWORD flags) {
+    HWND fgWnd = GetForegroundWindow();
+    DWORD fgThread = fgWnd ? GetWindowThreadProcessId(fgWnd, nullptr) : 0;
+    DWORD myThread = GetCurrentThreadId();
+    if (fgThread && fgThread != myThread)
+        AttachThreadInput(myThread, fgThread, TRUE);
+
+    INPUT input{};
+    input.type = INPUT_KEYBOARD;
+    input.ki.wVk = static_cast<WORD>(vk);
+    input.ki.dwFlags = flags;
+    SendInput(1, &input, sizeof(INPUT));
+
+    if (fgThread && fgThread != myThread)
+        AttachThreadInput(myThread, fgThread, FALSE);
+}
+
+static void SendChordDown(const std::vector<uint16_t>& chord) {
+    for (uint16_t vk : chord) SendKeyEvent(vk, 0);
+}
+
+static void SendChordUp(const std::vector<uint16_t>& chord) {
+    for (auto it = chord.rbegin(); it != chord.rend(); ++it)
+        SendKeyEvent(*it, KEYEVENTF_KEYUP);
+}
+
 void RunMacro(std::vector<std::vector<uint16_t>> steps, PaddleOverlay::KeyChordCallback cb) {
     std::thread([steps = std::move(steps), cb = std::move(cb)]() {
         for (const auto& chord : steps) {
@@ -95,9 +121,8 @@ void PaddleOverlay::Reset() {
         const PaddleAction& action = GetAction(m_bindings, i);
         if (m_prevPressed[i] &&
             action.type == PaddleActionType::KeyChord &&
-            !action.rapidFire &&
-            m_keyChordCallback) {
-            m_keyChordCallback(action.chord, false);
+            !action.rapidFire) {
+            SendChordUp(action.chord);
         }
         m_prevPressed[i] = false;
         m_lastFireTickMs[i] = 0;
@@ -140,6 +165,7 @@ void PaddleOverlay::Update(const uint8_t* buf, size_t n, const StandardGamepadSt
                 } else if (rising) {
                     logging::Logf("[PaddleOverlay] Down paddle=%S action=%s rapid=0", PaddleName(i), ActionTypeName(action.type));
                     if (m_keyChordCallback) m_keyChordCallback(action.chord, true);
+                    else SendChordDown(action.chord);
                 }
             } else if (action.type == PaddleActionType::Macro) {
                 if (rising || rapidReady) {
@@ -152,6 +178,7 @@ void PaddleOverlay::Update(const uint8_t* buf, size_t n, const StandardGamepadSt
             if (action.type == PaddleActionType::KeyChord && !action.rapidFire) {
                 logging::Logf("[PaddleOverlay] Up paddle=%S action=%s", PaddleName(i), ActionTypeName(action.type));
                 if (m_keyChordCallback) m_keyChordCallback(action.chord, false);
+                else SendChordUp(action.chord);
             }
         }
 
