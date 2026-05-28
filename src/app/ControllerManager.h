@@ -48,6 +48,11 @@ public:
     void EnableGameMode();
     void DisableGameMode();
 
+    // Detach/reattach the virtual controller while keeping game mode active.
+    // Used to let a game initialize its input stack before VIIPER appears.
+    void DetachVirtual();
+    void AttachVirtual();
+
     void SetTrackpadMouseEnabled(bool enabled);
     void SetBackButtonsEnabled(bool enabled);
     void SetUseLeftTrackpad(bool enabled);

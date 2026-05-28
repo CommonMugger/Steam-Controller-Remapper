@@ -692,7 +692,8 @@ bool TrayApp::Init(HINSTANCE hInstance) {
         SetStartupEnabled(true);
     AddTrayIcon();
     UpdateTrayIcon(m_controller->IsConnected(), m_controller->IsGameModeActive(), false);
-    SetTimer(m_hwnd, TIMER_STEAM_POLL, STEAM_POLL_MS, nullptr);
+    SetTimer(m_hwnd, TIMER_STEAM_POLL,  STEAM_POLL_MS,     nullptr);
+    SetTimer(m_hwnd, TIMER_SMAPI_WATCH, SMAPI_WATCH_MS,    nullptr);
     m_ipcServer->Start();
     const std::wstring widgetDir = GetWidgetLocalStateDirectory();
     if (!widgetDir.empty()) {
@@ -811,6 +812,23 @@ LRESULT TrayApp::HandleMessage(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         break;
 
     case WM_TIMER:
+        if (wp == TIMER_SMAPI_WATCH) {
+            if (m_controller && m_controller->IsGameModeActive()) {
+                const bool smapiNow = IsProcessRunningByName(L"StardewModdingAPI.exe");
+                const ULONGLONG now = GetTickCount64();
+                if (smapiNow && !m_smapiWasRunning) {
+                    logging::Logf("[SMAPI] Detected launch – detaching virtual controller");
+                    m_controller->DetachVirtual();
+                    m_smapiDetachedMs = now;
+                } else if (m_smapiDetachedMs > 0 && (now - m_smapiDetachedMs) >= SMAPI_REINIT_GRACE_MS) {
+                    logging::Logf("[SMAPI] Grace period elapsed – reattaching virtual controller");
+                    m_controller->AttachVirtual();
+                    m_smapiDetachedMs = 0;
+                }
+                m_smapiWasRunning = smapiNow;
+            }
+            return 0;
+        }
         if (wp == TIMER_STEAM_POLL) {
             // Retry controller discovery on the timer as well. On cold boot the
             // first open attempt can race HID initialization, and there may be
@@ -850,6 +868,7 @@ LRESULT TrayApp::HandleMessage(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
     case WM_DESTROY:
         KillTimer(hwnd, TIMER_STEAM_POLL);
+        KillTimer(hwnd, TIMER_SMAPI_WATCH);
         if (m_ipcServer)
             m_ipcServer->Stop();
         PostQuitMessage(0);

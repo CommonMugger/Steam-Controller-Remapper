@@ -61,6 +61,8 @@ private:
     bool                               m_reportSignatureChecked  = false;
     ULONGLONG                          m_lastReconnectAttemptTick = 0;
     ULONGLONG                          m_lastGameDetectedMs       = 0;
+    bool                               m_smapiWasRunning          = false;
+    ULONGLONG                          m_smapiDetachedMs          = 0;
     std::string                        m_lastWidgetStateJson;
     std::string                        m_lastWidgetRequestId;
     std::wstring                       m_savedControllerReportSignature;
@@ -79,8 +81,11 @@ private:
     static constexpr UINT IDM_CONFIGURE_PADDLES   = 1400;
     static constexpr UINT WM_TRAY          = WM_APP + 1;
     static constexpr UINT TRAY_UID         = 1;
-    static constexpr UINT TIMER_STEAM_POLL = 1;
-    static constexpr UINT STEAM_POLL_MS    = 1000;
+    static constexpr UINT TIMER_STEAM_POLL  = 1;
+    static constexpr UINT STEAM_POLL_MS     = 1000;
+    static constexpr UINT TIMER_SMAPI_WATCH = 3;
+    static constexpr UINT SMAPI_WATCH_MS    = 250;
+    static constexpr ULONGLONG SMAPI_REINIT_GRACE_MS = 30000;
     static constexpr UINT RECONNECT_BACKOFF_MS  = 3000;
     static constexpr ULONGLONG GAME_ACTIVE_GRACE_MS  = 30000;
 };

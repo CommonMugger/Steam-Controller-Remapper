@@ -170,6 +170,30 @@ void ControllerManager::DisableGameMode() {
     m_onStateChanged(m_connected, m_gameModeActive, false);
 }
 
+void ControllerManager::DetachVirtual() {
+    if (!m_gameModeActive || !m_virtual) return;
+    logging::Logf("[ControllerManager] DetachVirtual");
+    m_virtual.reset();
+}
+
+void ControllerManager::AttachVirtual() {
+    if (!m_gameModeActive || m_virtual) return;
+    logging::Logf("[ControllerManager] AttachVirtual");
+    SteamController* ctrl = g_ctrl.get();
+    m_virtual = std::make_unique<VirtualController>(
+        m_emulationMode,
+        m_paddleMappings,
+        m_paddleActions,
+        [ctrl](uint8_t largeMotor, uint8_t smallMotor) {
+            if (ctrl) ctrl->SetRumble(largeMotor, smallMotor);
+        });
+    if (!m_virtual->IsValid()) {
+        logging::Logf("[ControllerManager] AttachVirtual failed valid=0 missing=%d",
+                      m_virtual->IsDriverMissing() ? 1 : 0);
+        m_virtual.reset();
+    }
+}
+
 void ControllerManager::SetTrackpadMouseEnabled(bool enabled) {
     m_trackpadMouseEnabled = enabled;
     m_trackpad.SetTrackpadEnabled(enabled);
