@@ -416,16 +416,6 @@ VirtualController::VirtualController(EmulationMode mode, PaddleMappings paddleMa
         g_targetOwners[m_deviceHandle] = this;
     }
 
-    if (api.mouseLoaded) {
-        if (api.CreateMouseDeviceFn(m_serverHandle, &m_mouseHandle, m_busId, true, 0, 0) != 0)
-            logging::Logf("[VIIPER] Virtual mouse connected handle=%llu",
-                          static_cast<unsigned long long>(m_mouseHandle));
-        else {
-            logging::Logf("[VIIPER] Virtual mouse creation failed");
-            m_mouseHandle = 0;
-        }
-    }
-
     logging::Logf("[VIIPER] Virtual %s controller connected bus=%u handle=%llu",
                   m_mode == EmulationMode::DualShock4 ? "DualShock 4" : "Xbox 360",
                   m_busId,
@@ -441,9 +431,6 @@ VirtualController::~VirtualController() {
         std::lock_guard<std::mutex> lock(g_notificationMutex);
         g_targetOwners.erase(m_deviceHandle);
     }
-
-    if (api.loaded && api.mouseLoaded && m_mouseHandle)
-        api.RemoveMouseDeviceFn(m_mouseHandle);
 
     if (api.loaded && m_deviceHandle) {
         if (m_mode == EmulationMode::DualShock4) {
@@ -612,14 +599,30 @@ void VirtualController::KeyChordUp(const std::vector<uint16_t>& vkChord) {
 }
 
 void VirtualController::UpdateMouse(int16_t dx, int16_t dy, uint8_t buttons) {
-    ViiperApi& api = GetViiperApi();
-    if (!m_mouseHandle || !api.mouseLoaded)
-        return;
-    MouseDeviceState state{};
-    state.Buttons = buttons;
-    state.DX = dx;
-    state.DY = dy;
-    api.SetMouseDeviceStateFn(m_mouseHandle, state);
+    if (dx != 0 || dy != 0) {
+        INPUT input{};
+        input.type = INPUT_MOUSE;
+        input.mi.dwFlags = MOUSEEVENTF_MOVE;
+        input.mi.dx = dx;
+        input.mi.dy = dy;
+        SendInput(1, &input, sizeof(INPUT));
+    }
+    if (buttons != m_lastMouseButtons) {
+        const uint8_t changed = buttons ^ m_lastMouseButtons;
+        if (changed & 0x01u) {
+            INPUT input{};
+            input.type = INPUT_MOUSE;
+            input.mi.dwFlags = (buttons & 0x01u) ? MOUSEEVENTF_LEFTDOWN : MOUSEEVENTF_LEFTUP;
+            SendInput(1, &input, sizeof(INPUT));
+        }
+        if (changed & 0x02u) {
+            INPUT input{};
+            input.type = INPUT_MOUSE;
+            input.mi.dwFlags = (buttons & 0x02u) ? MOUSEEVENTF_RIGHTDOWN : MOUSEEVENTF_RIGHTUP;
+            SendInput(1, &input, sizeof(INPUT));
+        }
+        m_lastMouseButtons = buttons;
+    }
 }
 
 void VirtualController::ViiperDs4OutputCallback(std::uintptr_t handle, uint8_t rumbleSmall, uint8_t rumbleLarge,
