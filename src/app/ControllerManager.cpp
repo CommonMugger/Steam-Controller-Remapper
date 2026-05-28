@@ -141,7 +141,7 @@ void ControllerManager::EnableGameMode() {
     m_trackpad.SetTrackpadEnabled(m_trackpadMouseEnabled);
     m_trackpad.SetBackButtonsEnabled(m_backButtonsEnabled);
     m_trackpad.SetUseLeftTrackpad(m_useLeftTrackpad);
-    m_trackpad.SetHapticCallback([this]() { PulseTrackpadClickHaptics(); });
+    m_trackpad.SetHapticCallback([this](uint8_t strength) { PulseTrackpadClickHaptics(strength); });
     m_trackpad.SetMouseUpdateCallback([this](int16_t dx, int16_t dy, uint8_t buttons) {
         if (m_virtual) m_virtual->UpdateMouse(dx, dy, buttons);
     });
@@ -325,15 +325,15 @@ void ControllerManager::ReadLoop() {
     }
 }
 
-void ControllerManager::PulseTrackpadClickHaptics() {
+void ControllerManager::PulseTrackpadClickHaptics(uint8_t strength) {
     if (!g_ctrl || !m_gameModeActive)
         return;
     const std::uint64_t now = GetTickCount64();
     const std::uint64_t last = m_lastTrackpadHapticPulseTickMs.load();
-    if (now - last < 40)
+    if (now - last < 8)
         return;
     m_lastTrackpadHapticPulseTickMs = now;
-    g_ctrl->PulseHaptic(/*strength=*/64);
+    g_ctrl->PulseHaptic(strength);
 }
 
 StandardGamepadState ControllerManager::GetLatestStandardState() const {

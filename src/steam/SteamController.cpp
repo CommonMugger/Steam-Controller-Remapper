@@ -307,16 +307,6 @@ void SteamController::HeartbeatLoop() {
 }
 
 bool SteamController::SendHapticCommand(uint8_t position, uint16_t amplitude, uint16_t period, uint16_t count) {
-    (void)position;
-    (void)amplitude;
-    (void)period;
-    (void)count;
-
-    // Captured from Steam's own haptics test: a raw 4-byte interrupt-OUT packet.
-    // This appears to be the actual actuator trigger path, unlike the 0x8F
-    // feature command we previously tried to synthesize.
-    const uint8_t outPacket[] = { 0x82, 0x00, 0x02, 0x00 };
-
     uint8_t payload[7];
     payload[0] = position;
     payload[1] = static_cast<uint8_t>(amplitude & 0xFF);
@@ -330,27 +320,22 @@ bool SteamController::SendHapticCommand(uint8_t position, uint16_t amplitude, ui
     BuildCmd(buf, CMD_HAPTIC_FEEDBACK, payload, static_cast<uint8_t>(sizeof(payload)));
 
     uint8_t outBuf[64] = {};
-    outBuf[0] = 0x00; // HID output report ID 0
+    outBuf[0] = 0x00;
     outBuf[1] = CMD_HAPTIC_FEEDBACK;
     outBuf[2] = static_cast<uint8_t>(sizeof(payload));
     std::memcpy(outBuf + 3, payload, sizeof(payload));
 
     std::lock_guard<std::mutex> lock(m_featureMutex);
     bool featureOk = m_device.SendFeatureReport(buf, sizeof(buf));
-    bool outputOk = m_device.SendOutputReport(outBuf, sizeof(outBuf));
-    bool interruptOk = m_device.WriteOutputPacket(outPacket, sizeof(outPacket));
+    bool outputOk  = m_device.SendOutputReport(outBuf, sizeof(outBuf));
 
     logging::Logf(
-        "[SteamController] Haptic command pos=%u amp=%u period=%u count=%u featureOk=%d outputOk=%d interruptOk=%d",
+        "[SteamController] Haptic command pos=%u amp=%u period=%u count=%u featureOk=%d outputOk=%d",
         static_cast<unsigned>(position),
-        amplitude,
-        period,
-        count,
-        featureOk ? 1 : 0,
-        outputOk ? 1 : 0,
-        interruptOk ? 1 : 0);
+        amplitude, period, count,
+        featureOk ? 1 : 0, outputOk ? 1 : 0);
 
-    return featureOk || outputOk || interruptOk;
+    return featureOk || outputOk;
 }
 
 bool SteamController::ApplyTrackpadMouseSettings() {

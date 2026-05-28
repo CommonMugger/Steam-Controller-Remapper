@@ -80,7 +80,7 @@ private:
     void StartReadLoop();
     void StopReadLoop();
     void ReadLoop();
-    void PulseTrackpadClickHaptics();
+    void PulseTrackpadClickHaptics(uint8_t strength);
 
     StateChangedFn                     m_onStateChanged;
     bool                               m_connected            = false;

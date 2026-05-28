@@ -6,7 +6,7 @@
 
 class TrackpadMouse {
 public:
-    using HapticCallback      = std::function<void()>;
+    using HapticCallback      = std::function<void(uint8_t strength)>;
     using MouseUpdateCallback = std::function<void(int16_t dx, int16_t dy, uint8_t buttons)>;
 
     static constexpr uint8_t MOUSE_BTN_LEFT  = 0x01u;
@@ -39,10 +39,14 @@ private:
     int16_t  m_prevX            = 0;
     int16_t  m_prevY            = 0;
     uint8_t  m_currentButtons   = 0;
+    float    m_hapticMovAccum   = 0.0f;
     std::uint64_t m_clickPressStartTickMs = 0;
     HapticCallback      m_hapticCallback;
     MouseUpdateCallback m_mouseCallback;
 
-    static constexpr float SENSITIVITY = 0.015f;
+    static constexpr float SENSITIVITY              = 0.015f;
+    static constexpr float HAPTIC_MOVE_THRESHOLD    = 10.0f;  // pixels per haptic pulse
+    static constexpr uint8_t HAPTIC_MOVE_STRENGTH   = 20;
+    static constexpr uint8_t HAPTIC_CLICK_STRENGTH  = 64;
     static constexpr std::uint64_t RIGHT_CLICK_HOLD_MS = 300;
 };

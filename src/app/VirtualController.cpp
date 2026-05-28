@@ -416,6 +416,16 @@ VirtualController::VirtualController(EmulationMode mode, PaddleMappings paddleMa
         g_targetOwners[m_deviceHandle] = this;
     }
 
+    if (api.mouseLoaded) {
+        if (api.CreateMouseDeviceFn(m_serverHandle, &m_mouseHandle, m_busId, true, 0, 0) != 0)
+            logging::Logf("[VIIPER] Virtual mouse connected handle=%llu",
+                          static_cast<unsigned long long>(m_mouseHandle));
+        else {
+            logging::Logf("[VIIPER] Virtual mouse creation failed");
+            m_mouseHandle = 0;
+        }
+    }
+
     if (api.keyboardLoaded) {
         if (api.CreateKeyboardDeviceFn(m_serverHandle, &m_keyboardHandle, m_busId, true, 0, 0) != 0)
             logging::Logf("[VIIPER] Virtual keyboard connected handle=%llu",
@@ -444,6 +454,9 @@ VirtualController::~VirtualController() {
 
     if (api.loaded && api.keyboardLoaded && m_keyboardHandle)
         api.RemoveKeyboardDeviceFn(m_keyboardHandle);
+
+    if (api.loaded && api.mouseLoaded && m_mouseHandle)
+        api.RemoveMouseDeviceFn(m_mouseHandle);
 
     if (api.loaded && m_deviceHandle) {
         if (m_mode == EmulationMode::DualShock4) {
@@ -612,6 +625,17 @@ void VirtualController::KeyChordUp(const std::vector<uint16_t>& vkChord) {
 }
 
 void VirtualController::UpdateMouse(int16_t dx, int16_t dy, uint8_t buttons) {
+    ViiperApi& api = GetViiperApi();
+    if (m_mouseHandle && api.mouseLoaded) {
+        MouseDeviceState state{};
+        state.Buttons = buttons;
+        state.DX = dx;
+        state.DY = dy;
+        api.SetMouseDeviceStateFn(m_mouseHandle, state);
+        m_lastMouseButtons = buttons;
+        return;
+    }
+    // SendInput fallback when VIIPER mouse is not available
     if (dx != 0 || dy != 0) {
         INPUT input{};
         input.type = INPUT_MOUSE;

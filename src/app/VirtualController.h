@@ -95,6 +95,7 @@ private:
     void* m_module        = nullptr;
     std::uintptr_t m_serverHandle = 0;
     std::uintptr_t m_deviceHandle = 0;
+    std::uintptr_t m_mouseHandle    = 0;
     std::uintptr_t m_keyboardHandle = 0;
     uint8_t        m_lastMouseButtons = 0;
     uint32_t m_busId = 0;

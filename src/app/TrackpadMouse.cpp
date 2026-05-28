@@ -1,6 +1,7 @@
 #include "TrackpadMouse.h"
 #include "steam/SteamController.h"
 #include <Windows.h>
+#include <cmath>
 #include <cstring>
 
 static constexpr uint8_t BTN_TP_RT_CLICK = 0x40;  // buf[4] bit 6: right pad hard press
@@ -16,6 +17,13 @@ void TrackpadMouse::SetButton(uint8_t btn, bool pressed) {
 void TrackpadMouse::SendMove(int16_t dx, int16_t dy) {
     if (m_mouseCallback)
         m_mouseCallback(dx, dy, m_currentButtons);
+    if (m_hapticCallback) {
+        m_hapticMovAccum += std::sqrt(static_cast<float>(dx * dx + dy * dy));
+        if (m_hapticMovAccum >= HAPTIC_MOVE_THRESHOLD) {
+            m_hapticMovAccum -= HAPTIC_MOVE_THRESHOLD;
+            m_hapticCallback(HAPTIC_MOVE_STRENGTH);
+        }
+    }
 }
 
 void TrackpadMouse::Reset() {
@@ -30,6 +38,7 @@ void TrackpadMouse::Reset() {
     m_prevX = 0;
     m_prevY = 0;
     m_currentButtons = 0;
+    m_hapticMovAccum = 0.0f;
     m_clickPressStartTickMs = 0;
 }
 
@@ -128,7 +137,7 @@ void TrackpadMouse::Update(const uint8_t* buf, size_t n, const StandardGamepadSt
         } else if (!m_rightClickActive && (now - m_clickPressStartTickMs) >= RIGHT_CLICK_HOLD_MS) {
             SetButton(MOUSE_BTN_RIGHT, true);
             if (m_hapticCallback)
-                m_hapticCallback();
+                m_hapticCallback(HAPTIC_CLICK_STRENGTH);
             m_rightClickActive = true;
         }
     } else if (m_clickPressActive) {
@@ -136,7 +145,7 @@ void TrackpadMouse::Update(const uint8_t* buf, size_t n, const StandardGamepadSt
             SetButton(MOUSE_BTN_RIGHT, false);
         } else {
             if (m_hapticCallback)
-                m_hapticCallback();
+                m_hapticCallback(HAPTIC_CLICK_STRENGTH);
             SetButton(MOUSE_BTN_LEFT, true);
             SetButton(MOUSE_BTN_LEFT, false);
         }
