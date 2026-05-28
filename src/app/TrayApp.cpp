@@ -814,7 +814,7 @@ LRESULT TrayApp::HandleMessage(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_TIMER:
         if (wp == TIMER_SMAPI_WATCH) {
             if (m_controller && m_controller->IsGameModeActive()) {
-                const bool smapiNow = IsProcessRunningByName(L"StardewModdingAPI.exe");
+                const bool smapiNow = IsProcessRunningByName(L"Stardew Valley.exe");
                 const ULONGLONG now = GetTickCount64();
                 if (smapiNow && !m_smapiWasRunning) {
                     logging::Logf("[SMAPI] Detected launch – detaching virtual controller");
