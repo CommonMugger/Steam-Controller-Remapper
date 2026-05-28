@@ -307,35 +307,19 @@ void SteamController::HeartbeatLoop() {
 }
 
 bool SteamController::SendHapticCommand(uint8_t position, uint16_t amplitude, uint16_t period, uint16_t count) {
-    uint8_t payload[7];
-    payload[0] = position;
-    payload[1] = static_cast<uint8_t>(amplitude & 0xFF);
-    payload[2] = static_cast<uint8_t>((amplitude >> 8) & 0xFF);
-    payload[3] = static_cast<uint8_t>(period & 0xFF);
-    payload[4] = static_cast<uint8_t>((period >> 8) & 0xFF);
-    payload[5] = static_cast<uint8_t>(count & 0xFF);
-    payload[6] = static_cast<uint8_t>((count >> 8) & 0xFF);
+    (void)position;
+    (void)amplitude;
+    (void)period;
+    (void)count;
 
-    uint8_t buf[64];
-    BuildCmd(buf, CMD_HAPTIC_FEEDBACK, payload, static_cast<uint8_t>(sizeof(payload)));
-
-    uint8_t outBuf[64] = {};
-    outBuf[0] = 0x00;
-    outBuf[1] = CMD_HAPTIC_FEEDBACK;
-    outBuf[2] = static_cast<uint8_t>(sizeof(payload));
-    std::memcpy(outBuf + 3, payload, sizeof(payload));
+    // This 4-byte interrupt-OUT packet is the confirmed working actuator trigger,
+    // captured from Steam's own haptics path. The 0x8F feature report approach
+    // was tried previously and did not reliably fire the actuator.
+    const uint8_t outPacket[] = { 0x82, 0x00, 0x02, 0x00 };
 
     std::lock_guard<std::mutex> lock(m_featureMutex);
-    bool featureOk = m_device.SendFeatureReport(buf, sizeof(buf));
-    bool outputOk  = m_device.SendOutputReport(outBuf, sizeof(outBuf));
-
-    logging::Logf(
-        "[SteamController] Haptic command pos=%u amp=%u period=%u count=%u featureOk=%d outputOk=%d",
-        static_cast<unsigned>(position),
-        amplitude, period, count,
-        featureOk ? 1 : 0, outputOk ? 1 : 0);
-
-    return featureOk || outputOk;
+    bool ok = m_device.WriteOutputPacket(outPacket, sizeof(outPacket));
+    return ok;
 }
 
 bool SteamController::ApplyTrackpadMouseSettings() {
