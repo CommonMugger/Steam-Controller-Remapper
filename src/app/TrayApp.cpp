@@ -253,7 +253,17 @@ static bool DownloadFileToPath(const std::wstring& url, const std::wstring& dest
     if (!EnsureDirectoryExists(destinationPath.substr(0, slash)))
         return false;
     const HRESULT hr = URLDownloadToFileW(nullptr, url.c_str(), destinationPath.c_str(), 0, nullptr);
-    return SUCCEEDED(hr);
+    if (FAILED(hr))
+        return false;
+
+    // URLDownloadToFileW attaches a Mark-of-the-Web (the Zone.Identifier alternate
+    // data stream) to the downloaded file. If left in place, Expand-Archive
+    // propagates the internet-zone marker to every extracted file, which causes
+    // Windows SmartScreen/Defender to block the installer script and the bundled
+    // binaries. Deleting the stream marks the download as trusted/local.
+    const std::wstring zoneStream = destinationPath + L":Zone.Identifier";
+    DeleteFileW(zoneStream.c_str());
+    return true;
 }
 
 static bool ExpandZipArchive(const std::wstring& zipPath, const std::wstring& destinationPath) {
@@ -264,7 +274,9 @@ static bool ExpandZipArchive(const std::wstring& zipPath, const std::wstring& de
     command += zipPath;
     command += L"' -DestinationPath '";
     command += destinationPath;
-    command += L"' -Force\"";
+    command += L"' -Force; Get-ChildItem -LiteralPath '";
+    command += destinationPath;
+    command += L"' -Recurse -File | Unblock-File\"";
 
     STARTUPINFOW si{};
     si.cb = sizeof(si);
