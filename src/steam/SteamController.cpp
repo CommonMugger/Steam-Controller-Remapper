@@ -361,13 +361,19 @@ void SteamController::RumbleLoop() {
             const uint8_t smallMotor = m_smallMotor;
             lock.unlock();
 
-            // The reverse-engineered packet uses 1 for left haptics and 0 for right.
+            // Since the haptic packet fires at fixed amplitude, simulate variable
+            // intensity via pulse rate modulation: stronger motor → faster pulses.
+            // Large motor (left actuator) drives low-frequency rumble feel.
+            // Small motor (right actuator) drives high-frequency buzz feel.
             if (largeMotor != 0)
-                SendHapticCommand(/*left=*/1, ScaleMotorToAmplitude(largeMotor), /*period=*/0, /*count=*/1);
+                SendHapticCommand(/*left=*/1, ScaleMotorToAmplitude(largeMotor), 0, 1);
             if (smallMotor != 0)
-                SendHapticCommand(/*right=*/0, ScaleMotorToAmplitude(smallMotor), /*period=*/0, /*count=*/1);
+                SendHapticCommand(/*right=*/0, ScaleMotorToAmplitude(smallMotor), 0, 1);
 
-            std::this_thread::sleep_for(std::chrono::milliseconds(16));
+            // Pulse interval: 6ms (strong) → 20ms (weak), mapped from 255 → 1.
+            const uint8_t dominant = (largeMotor > smallMotor) ? largeMotor : smallMotor;
+            const int intervalMs = 20 - static_cast<int>((dominant * 14) / 255);
+            std::this_thread::sleep_for(std::chrono::milliseconds(intervalMs));
             lock.lock();
         }
     }
