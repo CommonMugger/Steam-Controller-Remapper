@@ -253,17 +253,7 @@ static bool DownloadFileToPath(const std::wstring& url, const std::wstring& dest
     if (!EnsureDirectoryExists(destinationPath.substr(0, slash)))
         return false;
     const HRESULT hr = URLDownloadToFileW(nullptr, url.c_str(), destinationPath.c_str(), 0, nullptr);
-    if (FAILED(hr))
-        return false;
-
-    // URLDownloadToFileW attaches a Mark-of-the-Web (the Zone.Identifier alternate
-    // data stream) to the downloaded file. If left in place, Expand-Archive
-    // propagates the internet-zone marker to every extracted file, which causes
-    // Windows SmartScreen/Defender to block the installer script and the bundled
-    // binaries. Deleting the stream marks the download as trusted/local.
-    const std::wstring zoneStream = destinationPath + L":Zone.Identifier";
-    DeleteFileW(zoneStream.c_str());
-    return true;
+    return SUCCEEDED(hr);
 }
 
 static bool ExpandZipArchive(const std::wstring& zipPath, const std::wstring& destinationPath) {
@@ -274,9 +264,7 @@ static bool ExpandZipArchive(const std::wstring& zipPath, const std::wstring& de
     command += zipPath;
     command += L"' -DestinationPath '";
     command += destinationPath;
-    command += L"' -Force; Get-ChildItem -LiteralPath '";
-    command += destinationPath;
-    command += L"' -Recurse -File | Unblock-File\"";
+    command += L"' -Force\"";
 
     STARTUPINFOW si{};
     si.cb = sizeof(si);
@@ -303,7 +291,12 @@ static bool ExpandZipArchive(const std::wstring& zipPath, const std::wstring& de
     return exitCode == 0;
 }
 
-static bool LaunchInstallerFromBundle(const std::wstring& bundleRoot) {
+// Opens File Explorer with the downloaded installer selected so the user can
+// run it themselves. We intentionally do not auto-execute the installer: the
+// downloaded bundle carries Windows' Mark-of-the-Web, and launching it through
+// Explorer lets the user approve it via Windows' own trust prompt rather than
+// silently bypassing that protection.
+static bool RevealInstallerForUser(const std::wstring& bundleRoot) {
     std::wstring installerCmd = bundleRoot;
     if (!installerCmd.empty() && installerCmd.back() != L'\\')
         installerCmd += L'\\';
@@ -311,7 +304,9 @@ static bool LaunchInstallerFromBundle(const std::wstring& bundleRoot) {
     if (!std::filesystem::exists(installerCmd))
         return false;
 
-    const HINSTANCE result = ShellExecuteW(nullptr, L"open", installerCmd.c_str(), nullptr, bundleRoot.c_str(), SW_SHOWNORMAL);
+    std::wstring selectArg = L"/select,\"" + installerCmd + L"\"";
+    const HINSTANCE result = ShellExecuteW(nullptr, L"open", L"explorer.exe",
+                                           selectArg.c_str(), nullptr, SW_SHOWNORMAL);
     return reinterpret_cast<INT_PTR>(result) > 32;
 }
 
@@ -1122,7 +1117,7 @@ void TrayApp::CheckForUpdates(bool userInitiated) {
             prompt += latestTag;
             prompt += L"\n\nDownload and install it now?";
             if (MessageBoxW(nullptr, prompt.c_str(), APP_NAME, MB_YESNO | MB_ICONINFORMATION) == IDYES) {
-                bool launchedInstaller = false;
+                bool revealedInstaller = false;
                 if (!installerUrl.empty()) {
                     std::wstring tempRoot;
                     tempRoot.resize(MAX_PATH);
@@ -1138,15 +1133,23 @@ void TrayApp::CheckForUpdates(bool userInitiated) {
                         if (EnsureDirectoryExists(updateRoot) &&
                             DownloadFileToPath(installerUrl, zipPath) &&
                             ExpandZipArchive(zipPath, extractRoot) &&
-                            LaunchInstallerFromBundle(extractRoot)) {
-                            launchedInstaller = true;
+                            RevealInstallerForUser(extractRoot)) {
+                            revealedInstaller = true;
+                            MessageBoxW(nullptr,
+                                        L"The update has been downloaded and opened in File Explorer.\n\n"
+                                        L"Run \"Install-SteamControllerRemapper.cmd\" to finish updating. "
+                                        L"Because it was downloaded from the internet, Windows may ask you "
+                                        L"to confirm before it runs — choose \"More info\" then "
+                                        L"\"Run anyway\" if prompted.",
+                                        APP_NAME,
+                                        MB_OK | MB_ICONINFORMATION);
                         }
                     }
                 }
 
-                if (!launchedInstaller) {
+                if (!revealedInstaller) {
                     std::wstring fallbackPrompt =
-                        L"Automatic download/install could not be started.\n\nOpen the release page instead?";
+                        L"The update could not be downloaded automatically.\n\nOpen the release page instead?";
                     if (MessageBoxW(nullptr, fallbackPrompt.c_str(), APP_NAME, MB_YESNO | MB_ICONWARNING) == IDYES) {
                         const wchar_t* url = latestUrl.empty() ? UPDATE_URL : latestUrl.c_str();
                         ShellExecuteW(nullptr, L"open", url, nullptr, nullptr, SW_SHOWNORMAL);
