@@ -859,7 +859,6 @@ LRESULT TrayApp::HandleMessage(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             if (m_autoSwitchProfiles) {
                 const std::wstring detectedProfileId = GetDetectedGameProfileId();
                 if (!detectedProfileId.empty()) {
-                    m_lastGameDetectedMs = GetTickCount64();
                     m_manualProfileOverride = false;
                     ApplyProfileById(detectedProfileId);
                 } else if (!m_manualProfileOverride) {
@@ -1037,6 +1036,10 @@ void TrayApp::ReconcileAutoMode() {
 
     if (shouldAutoEnable && !m_controller->IsGameModeActive()) {
         m_controller->EnableGameMode();
+    } else if (m_steamRunning && m_controller->IsGameModeActive()) {
+        // Steam owns the controller via Steam Input while it is running, so
+        // step out of the way: disable steamless mode until Steam closes.
+        m_controller->DisableGameMode();
     }
 }
 

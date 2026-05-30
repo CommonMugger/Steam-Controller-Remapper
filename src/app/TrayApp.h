@@ -60,7 +60,6 @@ private:
     bool                               m_steamRunning            = false;
     bool                               m_reportSignatureChecked  = false;
     ULONGLONG                          m_lastReconnectAttemptTick = 0;
-    ULONGLONG                          m_lastGameDetectedMs       = 0;
     bool                               m_smapiWasRunning          = false;
     ULONGLONG                          m_smapiDetachedMs          = 0;
     std::string                        m_lastWidgetStateJson;
