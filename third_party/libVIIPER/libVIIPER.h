@@ -30,6 +30,107 @@ typedef uintptr_t USBServerHandle;
 
 #line 1 "cgo-generated-wrapper"
 
+#line 3 "dualsense.go"
+
+#include <stdint.h>
+#include <stdlib.h>
+
+typedef uintptr_t USBServerHandle;
+
+typedef uintptr_t DSDeviceHandle;
+
+#define DS_BUTTON_SQUARE    0x00000010u
+#define DS_BUTTON_CROSS     0x00000020u
+#define DS_BUTTON_CIRCLE    0x00000040u
+#define DS_BUTTON_TRIANGLE  0x00000080u
+#define DS_BUTTON_L1        0x00000100u
+#define DS_BUTTON_R1        0x00000200u
+#define DS_BUTTON_L2        0x00000400u
+#define DS_BUTTON_R2        0x00000800u
+#define DS_BUTTON_CREATE    0x00001000u
+#define DS_BUTTON_OPTIONS   0x00002000u
+#define DS_BUTTON_L3        0x00004000u
+#define DS_BUTTON_R3        0x00008000u
+#define DS_BUTTON_PS        0x00010000u
+#define DS_BUTTON_TOUCHPAD  0x00020000u
+#define DS_BUTTON_MIC_MUTE  0x00040000u
+#define DS_BUTTON_RFN       0x00200000u
+#define DS_BUTTON_LFN       0x00100000u
+#define DS_BUTTON_R4        0x00800000u
+#define DS_BUTTON_L4        0x00400000u
+
+#define DS_DPAD_UP     0x01u
+#define DS_DPAD_DOWN   0x02u
+#define DS_DPAD_LEFT   0x04u
+#define DS_DPAD_RIGHT  0x08u
+
+#define DS_SHELL_COLOR_WHITE                    "00"
+#define DS_SHELL_COLOR_BLACK                    "01"
+#define DS_SHELL_COLOR_COSMIC_RED               "02"
+#define DS_SHELL_COLOR_NOVA_PINK                "03"
+#define DS_SHELL_COLOR_GALACTIC_PURPLE          "04"
+#define DS_SHELL_COLOR_STARLIGHT_BLUE           "05"
+#define DS_SHELL_COLOR_GREY_CAMOUFLAGE          "06"
+#define DS_SHELL_COLOR_VOLCANIC_RED             "07"
+#define DS_SHELL_COLOR_STERLING_SILVER          "08"
+#define DS_SHELL_COLOR_COBALT_BLUE              "09"
+#define DS_SHELL_COLOR_CHROMA_TEAL              "10"
+#define DS_SHELL_COLOR_CHROMA_INDIGO            "11"
+#define DS_SHELL_COLOR_CHROMA_PEARL             "12"
+#define DS_SHELL_COLOR_ANNIVERSARY_30TH         "30"
+#define DS_SHELL_COLOR_GOD_OF_WAR_RAGNAROK      "Z1"
+#define DS_SHELL_COLOR_SPIDER_MAN_2             "Z2"
+#define DS_SHELL_COLOR_ASTRO_BOT                "Z3"
+#define DS_SHELL_COLOR_FORTNITE                 "Z4"
+#define DS_SHELL_COLOR_MONSTER_HUNTER_WILDS     "Z5"
+#define DS_SHELL_COLOR_THE_LAST_OF_US           "Z6"
+#define DS_SHELL_COLOR_GHOST_OF_YOTEI           "Z7"
+#define DS_SHELL_COLOR_ICON_BLUE_LIMITED_EDITION "ZB"
+#define DS_SHELL_COLOR_ASTRO_BOT_JOYFUL_EDITION "ZC"
+#define DS_SHELL_COLOR_GENSHIN_IMPACT           "ZE"
+
+typedef struct {
+	int8_t   LX;
+	int8_t   LY;
+	int8_t   RX;
+	int8_t   RY;
+	uint32_t Buttons;
+	uint8_t  DPad;
+	uint8_t  L2;
+	uint8_t  R2;
+	uint16_t Touch1X;
+	uint16_t Touch1Y;
+	uint8_t  Touch1Active;
+	uint16_t Touch2X;
+	uint16_t Touch2Y;
+	uint8_t  Touch2Active;
+	int16_t  GyroX;
+	int16_t  GyroY;
+	int16_t  GyroZ;
+	int16_t  AccelX;
+	int16_t  AccelY;
+	int16_t  AccelZ;
+} DSDeviceState;
+
+typedef struct {
+	const char* SerialNumber;       // NULL = use default
+	const char* MACAddress;         // NULL = use default
+	const char* Board;              // NULL = use default
+	uint8_t     BatteryStatus;      // 0 = use default
+	double      TemperatureCelsius; // 0 = use default
+	double      BatteryVoltage;     // 0 = use default
+	const char* ShellColor;     // NULL = use default (2-char code, e.g. "00", "Z1")
+} DSMetaState;
+
+typedef void (*DSOutputCallback)(DSDeviceHandle handle, uint8_t rumbleSmall, uint8_t rumbleLarge, uint8_t ledRed, uint8_t ledGreen, uint8_t ledBlue, uint8_t playerLeds);
+
+static void viiper_call_ds_output(DSOutputCallback fn, DSDeviceHandle handle, uint8_t rumbleSmall, uint8_t rumbleLarge, uint8_t ledRed, uint8_t ledGreen, uint8_t ledBlue, uint8_t playerLeds) {
+	fn(handle, rumbleSmall, rumbleLarge, ledRed, ledGreen, ledBlue, playerLeds);
+}
+
+
+#line 1 "cgo-generated-wrapper"
+
 #line 3 "dualshock4.go"
 
 #include <stdint.h>
@@ -86,6 +187,14 @@ typedef struct {
 	int16_t  AccelY;
 	int16_t  AccelZ;
 } DS4DeviceState;
+
+typedef struct {
+	const char* SerialNumber;       // NULL = use default
+	const char* Board;              // NULL = use default
+	uint8_t     BatteryStatus;      // 0 = use default
+	double      TemperatureCelsius; // 0 = use default
+	double      BatteryVoltage;     // 0 = use default
+} DS4MetaState;
 
 typedef void (*DS4OutputCallback)(DS4DeviceHandle handle, uint8_t rumbleSmall, uint8_t rumbleLarge, uint8_t ledRed, uint8_t ledGreen, uint8_t ledBlue, uint8_t flashOn, uint8_t flashOff);
 
@@ -259,6 +368,86 @@ typedef struct {
 
 #line 1 "cgo-generated-wrapper"
 
+#line 3 "ns2pro.go"
+
+#include <stdint.h>
+#include <stdlib.h>
+
+typedef uintptr_t USBServerHandle;
+
+typedef uintptr_t NS2ProDeviceHandle;
+
+#define NS2PRO_BUTTON_B            0x00000001u
+#define NS2PRO_BUTTON_A            0x00000002u
+#define NS2PRO_BUTTON_Y            0x00000004u
+#define NS2PRO_BUTTON_X            0x00000008u
+#define NS2PRO_BUTTON_R            0x00000010u
+#define NS2PRO_BUTTON_ZR           0x00000020u
+#define NS2PRO_BUTTON_PLUS         0x00000040u
+#define NS2PRO_BUTTON_RIGHT_STICK  0x00000080u
+#define NS2PRO_BUTTON_DOWN         0x00000100u
+#define NS2PRO_BUTTON_RIGHT        0x00000200u
+#define NS2PRO_BUTTON_LEFT         0x00000400u
+#define NS2PRO_BUTTON_UP           0x00000800u
+#define NS2PRO_BUTTON_L            0x00001000u
+#define NS2PRO_BUTTON_ZL           0x00002000u
+#define NS2PRO_BUTTON_MINUS        0x00004000u
+#define NS2PRO_BUTTON_LEFT_STICK   0x00008000u
+#define NS2PRO_BUTTON_HOME         0x00010000u
+#define NS2PRO_BUTTON_CAPTURE      0x00020000u
+#define NS2PRO_BUTTON_GR           0x00040000u
+#define NS2PRO_BUTTON_GL           0x00080000u
+#define NS2PRO_BUTTON_C            0x00100000u
+#define NS2PRO_BUTTON_HEADSET      0x00200000u
+
+#define NS2PRO_STICK_MIN    0x0000u
+#define NS2PRO_STICK_CENTER 0x0800u
+#define NS2PRO_STICK_MAX    0x0FFFu
+
+#define NS2PRO_FEATURE_BUTTONS 0x01u
+#define NS2PRO_FEATURE_STICKS  0x02u
+#define NS2PRO_FEATURE_IMU     0x04u
+#define NS2PRO_FEATURE_MOUSE   0x10u
+#define NS2PRO_FEATURE_RUMBLE  0x20u
+
+typedef struct {
+	uint32_t Buttons;
+	uint16_t LX;
+	uint16_t LY;
+	uint16_t RX;
+	uint16_t RY;
+	int16_t  AccelX;
+	int16_t  AccelY;
+	int16_t  AccelZ;
+	int16_t  GyroX;
+	int16_t  GyroY;
+	int16_t  GyroZ;
+} NS2ProDeviceState;
+
+typedef struct {
+	const char* SerialNumber;  // NULL = use default
+	uint8_t     BatteryLevel;  // 0-9; 0 = use default (9 = full)
+	uint8_t     Charging;      // 0 = not charging
+	uint8_t     ExternalPower; // 0 = battery only
+	uint16_t    BatteryVolts;  // mV; 0 = use default (3800)
+} NS2ProMetaState;
+
+typedef struct {
+	uint8_t LeftRumble[16];
+	uint8_t RightRumble[16];
+	uint8_t Flags;
+	uint8_t PlayerLedMask;
+} NS2ProOutputState;
+
+typedef void (*NS2ProOutputCallback)(NS2ProDeviceHandle handle, NS2ProOutputState output);
+
+static void viiper_call_ns2pro_output(NS2ProOutputCallback fn, NS2ProDeviceHandle handle, NS2ProOutputState output) {
+	fn(handle, output);
+}
+
+
+#line 1 "cgo-generated-wrapper"
+
 #line 3 "server.go"
 
 #include <stdint.h>
@@ -412,6 +601,50 @@ extern GoUint8 CreateUSBBus(USBServerHandle handle, GoUint32* busID);
  */
 extern GoUint8 RemoveUSBBus(USBServerHandle handle, GoUint32 busID);
 /*
+ * CreateDualSenseDevice creates a new DualSense (non-edge) device on the bus with the given ID on the server associated with the given handle.
+ * @param serverHandle Handle to the USB server.
+ * @param outDeviceHandle Output parameter for the created device handle.
+ * @param busID ID of the bus to add the device to.
+ * @param autoAttachLocalhost If true, the device will be automatically attached to a USBIP-Client/Driver running on THIS machine.
+ * @param idVendor Optional USB vendor ID (0 = default).
+ * @param idProduct Optional USB product ID (0 = default).
+ * @param meta Optional pointer to initial device metadata. Pass NULL to use defaults.
+ * 
+ */
+extern GoUint8 CreateDualSenseDevice(USBServerHandle serverHandle, DSDeviceHandle* outDeviceHandle, GoUint32 busID, GoUint8 autoAttachLocalhost, GoUint16 idVendor, GoUint16 idProduct, DSMetaState* meta);
+/*
+ * CreateDualSenseEdgeDevice creates a new DualSense Edge device on the bus with the given ID on the server associated with the given handle.
+ * @param serverHandle Handle to the USB server.
+ * @param outDeviceHandle Output parameter for the created device handle.
+ * @param busID ID of the bus to add the device to.
+ * @param autoAttachLocalhost If true, the device will be automatically attached to a USBIP-Client/Driver running on THIS machine.
+ * @param idVendor Optional USB vendor ID (0 = default).
+ * @param idProduct Optional USB product ID (0 = default).
+ * @param meta Optional pointer to initial device metadata. Pass NULL to use defaults.
+ * 
+ */
+extern GoUint8 CreateDualSenseEdgeDevice(USBServerHandle serverHandle, DSDeviceHandle* outDeviceHandle, GoUint32 busID, GoUint8 autoAttachLocalhost, GoUint16 idVendor, GoUint16 idProduct, DSMetaState* meta);
+/*
+ * SetDualSenseDeviceState updates the input state of the DualSense device associated with the given handle.
+ * @param handle Handle to the DualSense device.
+ * @param state New input state to set on the device.
+ * 
+ */
+extern GoUint8 SetDualSenseDeviceState(DSDeviceHandle handle, DSDeviceState state);
+/*
+ * SetDualSenseOutputCallback sets a callback to be invoked when the host sends output (rumble/LED) commands to the device.
+ * @param handle Handle to the DualSense device.
+ * @param callback Callback receiving rumbleSmall, rumbleLarge, ledRed, ledGreen, ledBlue, playerLeds. Pass NULL to clear.
+ * 
+ */
+extern GoUint8 SetDualSenseOutputCallback(DSDeviceHandle handle, DSOutputCallback cb);
+/*
+ * RemoveDualSenseDevice removes the DualSense device associated with the given handle from the server.
+ * @param handle Handle to the DualSense device to remove.
+ * 
+ */
+extern GoUint8 RemoveDualSenseDevice(DSDeviceHandle handle);
+/*
  * CreateDS4Device creates a new DualShock 4 device on the bus with the given ID on the server associated with the given handle.
  * @param serverHandle Handle to the USB server.
  * @param outDeviceHandle Output parameter for the created device handle.
@@ -419,9 +652,10 @@ extern GoUint8 RemoveUSBBus(USBServerHandle handle, GoUint32 busID);
  * @param autoAttachLocalhost If true, the device will be automatically attached to a USBIP-Client/Driver running on THIS machine.
  * @param idVendor Optional USB vendor ID (0 = default).
  * @param idProduct Optional USB product ID (0 = default).
+ * @param meta Optional pointer to initial device metadata. Pass NULL to use defaults.
  * 
  */
-extern GoUint8 CreateDS4Device(USBServerHandle serverHandle, DS4DeviceHandle* outDeviceHandle, GoUint32 busID, GoUint8 autoAttachLocalhost, GoUint16 idVendor, GoUint16 idProduct);
+extern GoUint8 CreateDS4Device(USBServerHandle serverHandle, DS4DeviceHandle* outDeviceHandle, GoUint32 busID, GoUint8 autoAttachLocalhost, GoUint16 idVendor, GoUint16 idProduct, DS4MetaState* meta);
 /*
  * SetDS4DeviceState updates the input state of the DualShock 4 device associated with the given handle.
  * @param handle Handle to the DS4 device.
@@ -497,6 +731,38 @@ extern GoUint8 SetMouseDeviceState(MouseDeviceHandle handle, MouseDeviceState st
  * 
  */
 extern GoUint8 RemoveMouseDevice(MouseDeviceHandle handle);
+/*
+ * CreateNS2ProDevice creates a new Nintendo Switch 2 Pro Controller device on the bus with the given ID on the server associated with the given handle.
+ * @param serverHandle Handle to the USB server.
+ * @param outDeviceHandle Output parameter for the created device handle.
+ * @param busID ID of the bus to add the device to.
+ * @param autoAttachLocalhost If true, the device will be automatically attached to a USBIP-Client/Driver running on THIS machine.
+ * @param idVendor Optional USB vendor ID (0 = default).
+ * @param idProduct Optional USB product ID (0 = default).
+ * @param meta Optional pointer to initial device metadata. Pass NULL to use defaults.
+ * 
+ */
+extern GoUint8 CreateNS2ProDevice(USBServerHandle serverHandle, NS2ProDeviceHandle* outDeviceHandle, GoUint32 busID, GoUint8 autoAttachLocalhost, GoUint16 idVendor, GoUint16 idProduct, NS2ProMetaState* meta);
+/*
+ * SetNS2ProDeviceState updates the input state of the NS2Pro device associated with the given handle.
+ * @param handle Handle to the NS2Pro device.
+ * @param state New input state to set on the device.
+ * 
+ */
+extern GoUint8 SetNS2ProDeviceState(NS2ProDeviceHandle handle, NS2ProDeviceState state);
+/*
+ * SetNS2ProOutputCallback sets a callback to be invoked when the host sends output (rumble/LED) commands to the device.
+ * @param handle Handle to the NS2Pro device.
+ * @param callback Callback receiving the full output state (HD rumble data, flags, player LED mask). Pass NULL to clear.
+ * 
+ */
+extern GoUint8 SetNS2ProOutputCallback(NS2ProDeviceHandle handle, NS2ProOutputCallback cb);
+/*
+ * RemoveNS2ProDevice removes the NS2Pro device associated with the given handle from the server.
+ * @param handle Handle to the NS2Pro device to remove.
+ * 
+ */
+extern GoUint8 RemoveNS2ProDevice(NS2ProDeviceHandle handle);
 /*
  * NewUSBServer creates a new USB server with the given configuration and returns a handle to it.
  * The server will run in the background and can be stopped by calling CloseUSBServer with the returned handle.
