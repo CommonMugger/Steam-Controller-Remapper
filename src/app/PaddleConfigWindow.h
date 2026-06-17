@@ -123,7 +123,7 @@ private:
     bool                 m_updatingControls = false;
     bool                 m_autoSwitchProfiles = false;
     int                  m_controllerFocusIndex = 0;
-    std::array<int, 5>   m_modeSelections = { 0, 0, 0, 0, 0 };
+    std::array<int, kTotalButtonCount> m_modeSelections = {};
     ControllerUiState    m_lastControllerUiState{};
     std::wstring         m_tooltipText;
     std::wstring         m_editProfileId = L"default";

@@ -56,12 +56,67 @@ struct PaddleAction {
 };
 
 struct PaddleActionBindings {
+    // Back paddles & QAM (indices 0–4)
     PaddleAction l4;
     PaddleAction l5;
     PaddleAction r4;
     PaddleAction r5;
     PaddleAction qam;
+    // Standard controller buttons (indices 5–19)
+    PaddleAction a;
+    PaddleAction b;
+    PaddleAction x;
+    PaddleAction y;
+    PaddleAction lb;
+    PaddleAction rb;
+    PaddleAction view;
+    PaddleAction menu;
+    PaddleAction guide;
+    PaddleAction l3;
+    PaddleAction r3;
+    PaddleAction dpadUp;
+    PaddleAction dpadDown;
+    PaddleAction dpadLeft;
+    PaddleAction dpadRight;
+    // Analog triggers (indices 20–21)
+    PaddleAction l2;
+    PaddleAction r2;
 };
+
+constexpr int kPaddleCount       = 5;
+constexpr int kTotalButtonCount  = 22;
+
+// Maps a button index (0–21) to its PaddleAction slot.
+inline PaddleAction* GetButtonAction(PaddleActionBindings& b, int i) {
+    switch (i) {
+    case  0: return &b.l4;
+    case  1: return &b.l5;
+    case  2: return &b.r4;
+    case  3: return &b.r5;
+    case  4: return &b.qam;
+    case  5: return &b.a;
+    case  6: return &b.b;
+    case  7: return &b.x;
+    case  8: return &b.y;
+    case  9: return &b.lb;
+    case 10: return &b.rb;
+    case 11: return &b.view;
+    case 12: return &b.menu;
+    case 13: return &b.guide;
+    case 14: return &b.l3;
+    case 15: return &b.r3;
+    case 16: return &b.dpadUp;
+    case 17: return &b.dpadDown;
+    case 18: return &b.dpadLeft;
+    case 19: return &b.dpadRight;
+    case 20: return &b.l2;
+    case 21: return &b.r2;
+    default: return nullptr;
+    }
+}
+inline const PaddleAction* GetButtonAction(const PaddleActionBindings& b, int i) {
+    return GetButtonAction(const_cast<PaddleActionBindings&>(b), i);
+}
 
 class VirtualController {
 public:
@@ -104,7 +159,7 @@ private:
     EmulationMode m_mode = EmulationMode::Xbox360;
     PaddleMappings m_paddleMappings{};
     PaddleActionBindings m_paddleActions{};
-    bool m_prevPaddlePressed[5] = {false, false, false, false, false};
+    bool m_prevPaddlePressed[kTotalButtonCount] = {};
     bool m_loggedSdlState = false;
     RumbleCallback m_onRumble;
     std::mutex                 m_keyboardMutex;

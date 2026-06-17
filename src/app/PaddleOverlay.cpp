@@ -8,52 +8,91 @@
 #include <vector>
 
 namespace {
-bool IsPressed(const uint8_t* buf, size_t n, int paddleIndex, const StandardGamepadState* standardState) {
+bool IsPressed(const uint8_t* buf, size_t n, int index, const StandardGamepadState* standardState) {
     if (standardState && standardState->connected) {
-        switch (paddleIndex) {
-        case 0: return standardState->leftPaddle1;
-        case 1: return standardState->leftPaddle2;
-        case 2: return standardState->rightPaddle1;
-        case 3: return standardState->rightPaddle2;
-        case 4: return standardState->misc1 || standardState->touchpadButton;
+        switch (index) {
+        case  0: return standardState->leftPaddle1;
+        case  1: return standardState->leftPaddle2;
+        case  2: return standardState->rightPaddle1;
+        case  3: return standardState->rightPaddle2;
+        case  4: return standardState->misc1 || standardState->touchpadButton;
+        case  5: return standardState->a;
+        case  6: return standardState->b;
+        case  7: return standardState->x;
+        case  8: return standardState->y;
+        case  9: return standardState->leftShoulder;
+        case 10: return standardState->rightShoulder;
+        case 11: return standardState->back;
+        case 12: return standardState->start;
+        case 13: return standardState->guide;
+        case 14: return standardState->leftStick;
+        case 15: return standardState->rightStick;
+        case 16: return standardState->dpadUp;
+        case 17: return standardState->dpadDown;
+        case 18: return standardState->dpadLeft;
+        case 19: return standardState->dpadRight;
+        case 20: return standardState->leftTrigger  > 50;
+        case 21: return standardState->rightTrigger > 50;
         default: return false;
         }
     }
-
     if (!SteamController::UsesLegacyStateLayout(buf, n))
         return false;
-
     const uint8_t b0 = buf[2];
     const uint8_t b1 = buf[3];
     const uint8_t b2 = buf[4];
-
-    switch (paddleIndex) {
-    case 0: return (b2 & SteamController::BTN_L4) != 0;
-    case 1: return (b2 & SteamController::BTN_L5) != 0;
-    case 2: return (b0 & SteamController::BTN_R4) != 0;
-    case 3: return (b1 & SteamController::BTN_R5) != 0;
-    case 4: return (b0 & SteamController::BTN_QAM) != 0;
+    switch (index) {
+    case  0: return (b2 & SteamController::BTN_L4)       != 0;
+    case  1: return (b2 & SteamController::BTN_L5)       != 0;
+    case  2: return (b0 & SteamController::BTN_R4)       != 0;
+    case  3: return (b1 & SteamController::BTN_R5)       != 0;
+    case  4: return (b0 & SteamController::BTN_QAM)      != 0;
+    case  5: return (b0 & SteamController::BTN_A)        != 0;
+    case  6: return (b0 & SteamController::BTN_B)        != 0;
+    case  7: return (b0 & SteamController::BTN_X)        != 0;
+    case  8: return (b0 & SteamController::BTN_Y)        != 0;
+    case  9: return (b2 & SteamController::BTN_LB)       != 0;
+    case 10: return (b1 & SteamController::BTN_RB)       != 0;
+    case 11: return (b1 & SteamController::BTN_VIEW)     != 0;
+    case 12: return (b0 & SteamController::BTN_MENU)     != 0;
+    case 13: return (b2 & SteamController::BTN_STEAM)    != 0;
+    case 14: return (b1 & SteamController::BTN_LS)       != 0;
+    case 15: return (b0 & SteamController::BTN_RS)       != 0;
+    case 16: return (b1 & SteamController::BTN_DPAD_UP)  != 0;
+    case 17: return (b1 & SteamController::BTN_DPAD_DN)  != 0;
+    case 18: return (b1 & SteamController::BTN_DPAD_LT)  != 0;
+    case 19: return (b1 & SteamController::BTN_DPAD_RT)  != 0;
+    case 20: return n > 7 && (static_cast<int16_t>(buf[6] | (buf[7] << 8))) > 0x1000;
+    case 21: return n > 9 && (static_cast<int16_t>(buf[8] | (buf[9] << 8))) > 0x1000;
     default: return false;
     }
 }
 
-const PaddleAction& GetAction(const PaddleActionBindings& bindings, int paddleIndex) {
-    switch (paddleIndex) {
-    case 0: return bindings.l4;
-    case 1: return bindings.l5;
-    case 2: return bindings.r4;
-    case 3: return bindings.r5;
-    default: return bindings.qam;
-    }
-}
-
-const wchar_t* PaddleName(int paddleIndex) {
-    switch (paddleIndex) {
-    case 0: return L"L4";
-    case 1: return L"L5";
-    case 2: return L"R4";
-    case 3: return L"R5";
-    default: return L"QAM";
+const wchar_t* ButtonName(int index) {
+    switch (index) {
+    case  0: return L"L4";
+    case  1: return L"L5";
+    case  2: return L"R4";
+    case  3: return L"R5";
+    case  4: return L"QAM";
+    case  5: return L"A";
+    case  6: return L"B";
+    case  7: return L"X";
+    case  8: return L"Y";
+    case  9: return L"LB";
+    case 10: return L"RB";
+    case 11: return L"View";
+    case 12: return L"Menu";
+    case 13: return L"Guide";
+    case 14: return L"L3";
+    case 15: return L"R3";
+    case 16: return L"DPadUp";
+    case 17: return L"DPadDown";
+    case 18: return L"DPadLeft";
+    case 19: return L"DPadRight";
+    case 20: return L"L2";
+    case 21: return L"R2";
+    default: return L"?";
     }
 }
 
@@ -119,13 +158,13 @@ void PaddleOverlay::SetBindings(PaddleActionBindings bindings) {
 }
 
 void PaddleOverlay::Reset() {
-    for (int i = 0; i < 5; ++i) {
-        const PaddleAction& action = GetAction(m_bindings, i);
-        if (m_prevPressed[i] &&
-            action.type == PaddleActionType::KeyChord &&
-            !action.rapidFire) {
-            if (m_keyChordCallback) m_keyChordCallback(action.chord, false);
-            else SendChordUp(action.chord);
+    for (int i = 0; i < kTotalButtonCount; ++i) {
+        const PaddleAction* ap = GetButtonAction(m_bindings, i);
+        if (ap && m_prevPressed[i] &&
+            ap->type == PaddleActionType::KeyChord &&
+            !ap->rapidFire) {
+            if (m_keyChordCallback) m_keyChordCallback(ap->chord, false);
+            else SendChordUp(ap->chord);
         }
         m_prevPressed[i] = false;
         m_lastFireTickMs[i] = 0;
@@ -138,20 +177,23 @@ void PaddleOverlay::Update(const uint8_t* buf, size_t n, const StandardGamepadSt
         return;
 
     if (!m_hasSeededState) {
-        for (int i = 0; i < 5; ++i)
+        for (int i = 0; i < kTotalButtonCount; ++i)
             m_prevPressed[i] = IsPressed(buf, n, i, standardState);
         m_hasSeededState = true;
-        logging::Logf("[PaddleOverlay] Seeded initial paddle state L4=%d L5=%d R4=%d R5=%d QAM=%d",
-                      m_prevPressed[0] ? 1 : 0,
-                      m_prevPressed[1] ? 1 : 0,
-                      m_prevPressed[2] ? 1 : 0,
-                      m_prevPressed[3] ? 1 : 0,
-                      m_prevPressed[4] ? 1 : 0);
         return;
     }
 
-    for (int i = 0; i < 5; ++i) {
-        const PaddleAction& action = GetAction(m_bindings, i);
+    for (int i = 0; i < kTotalButtonCount; ++i) {
+        const PaddleAction* ap = GetButtonAction(m_bindings, i);
+        if (!ap) continue;
+        const PaddleAction& action = *ap;
+
+        // PaddleOverlay only handles key/macro actions. Gamepad remaps and
+        // UseMenuMapping are handled inside VirtualController::Update().
+        if (action.type != PaddleActionType::KeyChord &&
+            action.type != PaddleActionType::Macro)
+            continue;
+
         const bool pressed = IsPressed(buf, n, i, standardState);
         const ULONGLONG now = GetTickCount64();
 
@@ -162,24 +204,24 @@ void PaddleOverlay::Update(const uint8_t* buf, size_t n, const StandardGamepadSt
 
             if (action.type == PaddleActionType::KeyChord) {
                 if (action.rapidFire && rapidReady) {
-                    logging::Logf("[PaddleOverlay] Fire paddle=%S action=%s rapid=1", PaddleName(i), ActionTypeName(action.type));
+                    logging::Logf("[PaddleOverlay] Fire btn=%S action=%s rapid=1", ButtonName(i), ActionTypeName(action.type));
                     TapChord(action.chord, m_keyChordCallback);
                     m_lastFireTickMs[i] = now;
                 } else if (rising) {
-                    logging::Logf("[PaddleOverlay] Down paddle=%S action=%s rapid=0", PaddleName(i), ActionTypeName(action.type));
+                    logging::Logf("[PaddleOverlay] Down btn=%S action=%s", ButtonName(i), ActionTypeName(action.type));
                     if (m_keyChordCallback) m_keyChordCallback(action.chord, true);
                     else SendChordDown(action.chord);
                 }
             } else if (action.type == PaddleActionType::Macro) {
                 if (rising || rapidReady) {
-                    logging::Logf("[PaddleOverlay] Fire paddle=%S action=%s rapid=%d", PaddleName(i), ActionTypeName(action.type), action.rapidFire ? 1 : 0);
+                    logging::Logf("[PaddleOverlay] Fire btn=%S action=%s rapid=%d", ButtonName(i), ActionTypeName(action.type), action.rapidFire ? 1 : 0);
                     RunMacro(action.macroSteps, m_keyChordCallback);
                     m_lastFireTickMs[i] = now;
                 }
             }
         } else if (!pressed && m_prevPressed[i]) {
             if (action.type == PaddleActionType::KeyChord && !action.rapidFire) {
-                logging::Logf("[PaddleOverlay] Up paddle=%S action=%s", PaddleName(i), ActionTypeName(action.type));
+                logging::Logf("[PaddleOverlay] Up btn=%S action=%s", ButtonName(i), ActionTypeName(action.type));
                 if (m_keyChordCallback) m_keyChordCallback(action.chord, false);
                 else SendChordUp(action.chord);
             }

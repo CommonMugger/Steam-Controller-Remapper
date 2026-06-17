@@ -187,11 +187,35 @@ function Restart-GameBar {
     Write-InstallerLog 'Restarted Xbox Game Bar background processes. Reopen Game Bar with Win+G.'
 }
 
+function Enable-DeveloperMode {
+    # Add-AppDevPackage.ps1 -Force refuses to run when a developer license is
+    # required, because acquiring one needs user interaction. Enabling Developer
+    # Mode via the registry makes the machine trusted for sideloading without a
+    # license, so -Force can proceed unattended.
+    $keyPath = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock'
+    if (-not (Test-Path $keyPath)) {
+        New-Item -Path $keyPath -Force | Out-Null
+    }
+    $current = Get-ItemProperty -Path $keyPath -ErrorAction SilentlyContinue
+    if ($current.AllowDevelopmentWithoutDevLicense -eq 1 -and $current.AllowAllTrustedApps -eq 1) {
+        Write-InstallerLog 'Developer Mode already enabled.'
+        return
+    }
+    Set-ItemProperty -Path $keyPath -Name 'AllowDevelopmentWithoutDevLicense' -Value 1 -Type DWord
+    Set-ItemProperty -Path $keyPath -Name 'AllowAllTrustedApps' -Value 1 -Type DWord
+    Write-InstallerLog 'Enabled Developer Mode (AllowDevelopmentWithoutDevLicense).'
+}
+
 function Install-WidgetPackage([string]$WidgetInstallerScriptPath) {
+    Enable-DeveloperMode
     Write-InstallerLog 'Installing widget package with Add-AppDevPackage.ps1...'
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $WidgetInstallerScriptPath -Force
+    $innerOutput = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $WidgetInstallerScriptPath -Force 2>&1
+    $innerOutput | ForEach-Object { Write-InstallerLog "  [Add-AppDevPackage] $_" }
     if ($LASTEXITCODE -ne 0) {
-        throw "Widget package installer failed with exit code $LASTEXITCODE."
+        $detail = ($innerOutput | Where-Object { $_ -match 'error|fail|cannot|refused|0x' } | Select-Object -Last 5) -join ' | '
+        $msg = "Widget package installer failed with exit code $LASTEXITCODE."
+        if ($detail) { $msg += " Detail: $detail" }
+        throw $msg
     }
 }
 

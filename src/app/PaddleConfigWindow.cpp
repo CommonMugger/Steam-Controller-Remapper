@@ -31,7 +31,6 @@ constexpr int IDC_AUTO_SWITCH = 2018;
 constexpr UINT_PTR UI_NAV_TIMER_ID = 1;
 constexpr UINT UI_NAV_TIMER_MS = 90;
 constexpr UINT_PTR TOOLTIP_BASE_ID = 5000;
-constexpr int kButtonCount = 5;
 constexpr int kDefaultControllerFocusIndex = 7;
 
 ULONG_PTR EnsureGdiplus() {
@@ -78,11 +77,29 @@ Gdiplus::Image* LoadControllerImage() {
 
 const wchar_t* PaddleName(int index) {
     switch (index) {
-    case 0: return L"L4";
-    case 1: return L"L5";
-    case 2: return L"R4";
-    case 3: return L"R5";
-    default: return L"QAM";
+    case  0: return L"L4";
+    case  1: return L"L5";
+    case  2: return L"R4";
+    case  3: return L"R5";
+    case  4: return L"QAM";
+    case  5: return L"A";
+    case  6: return L"B";
+    case  7: return L"X";
+    case  8: return L"Y";
+    case  9: return L"LB";
+    case 10: return L"RB";
+    case 11: return L"View";
+    case 12: return L"Menu";
+    case 13: return L"Guide";
+    case 14: return L"L3";
+    case 15: return L"R3";
+    case 16: return L"D-Pad Up";
+    case 17: return L"D-Pad Down";
+    case 18: return L"D-Pad Left";
+    case 19: return L"D-Pad Right";
+    case 20: return L"L2";
+    case 21: return L"R2";
+    default: return L"?";
     }
 }
 
@@ -252,7 +269,7 @@ LRESULT PaddleConfigWindow::HandleMessage(HWND hwnd, UINT msg, WPARAM wp, LPARAM
         case IDC_PADDLE_CURRENT:
             if (HIWORD(wp) == CBN_SELCHANGE && !m_updatingControls) {
                 const int selectedIndex = static_cast<int>(SendMessageW(m_comboPaddleSelect, CB_GETCURSEL, 0, 0));
-                if (selectedIndex >= 0 && selectedIndex < kButtonCount) {
+                if (selectedIndex >= 0 && selectedIndex < kTotalButtonCount) {
                     m_selectedPaddle = selectedIndex;
                     RefreshEditorForSelectedPaddle();
                     InvalidateRect(hwnd, nullptr, TRUE);
@@ -311,7 +328,7 @@ LRESULT PaddleConfigWindow::HandleMessage(HWND hwnd, UINT msg, WPARAM wp, LPARAM
         break;
     case WM_LBUTTONDOWN: {
         const POINT pt{ GET_X_LPARAM(lp), GET_Y_LPARAM(lp) };
-        for (int i = 0; i < kButtonCount; ++i) {
+        for (int i = 0; i < kTotalButtonCount; ++i) {
             RECT rect = PaddleRect(i);
             if (PtInRect(&rect, pt)) {
                 m_selectedPaddle = i;
@@ -425,10 +442,10 @@ void PaddleConfigWindow::CreateControls() {
     CreateWindowW(L"STATIC", L"Button to edit:", WS_CHILD | WS_VISIBLE,
                   620, 282, 120, 20, m_hwnd, nullptr, m_hInstance, nullptr);
     m_comboPaddleSelect = CreateWindowW(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST,
-                                        620, 304, 240, 200, m_hwnd,
+                                        620, 304, 240, 440, m_hwnd,
                                         static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_PADDLE_CURRENT))),
                                         m_hInstance, nullptr);
-    for (int i = 0; i < kButtonCount; ++i)
+    for (int i = 0; i < kTotalButtonCount; ++i)
         SendMessageW(m_comboPaddleSelect, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(PaddleName(i)));
     CreateWindowW(L"STATIC", L"Current binding:", WS_CHILD | WS_VISIBLE,
                   620, 336, 120, 20, m_hwnd, nullptr, m_hInstance, nullptr);
@@ -502,10 +519,15 @@ void PaddleConfigWindow::RefreshFromModel() {
     m_autoSwitchProfiles = m_loadAutoSwitch ? m_loadAutoSwitch() : false;
     RefreshGameSourcesUi();
     RefreshInstalledGames();
-    const PaddleAction actionList[] = { m_actions.l4, m_actions.l5, m_actions.r4, m_actions.r5, m_actions.qam };
-    for (int i = 0; i < kButtonCount; ++i) {
-        switch (actionList[i].type) {
+    for (int i = 0; i < kTotalButtonCount; ++i) {
+        const PaddleAction* ap = GetButtonAction(m_actions, i);
+        if (!ap) continue;
+        switch (ap->type) {
         case PaddleActionType::UseMenuMapping:
+            // Paddles: UseMenuMapping shows as gamepad mode (their PaddleMappings fallback).
+            // Standard buttons: UseMenuMapping means passthrough (mode 3).
+            m_modeSelections[i] = (i < kPaddleCount) ? 0 : 3;
+            break;
         case PaddleActionType::Gamepad:
             m_modeSelections[i] = 0;
             break;
@@ -612,22 +634,19 @@ void PaddleConfigWindow::RefreshInstalledGames(bool forceRefresh) {
 }
 
 PaddleAction* PaddleConfigWindow::SelectedAction() {
-    switch (m_selectedPaddle) {
-    case 0: return &m_actions.l4;
-    case 1: return &m_actions.l5;
-    case 2: return &m_actions.r4;
-    case 3: return &m_actions.r5;
-    default: return &m_actions.qam;
-    }
+    return GetButtonAction(m_actions, m_selectedPaddle);
 }
 
 PaddleMapping* PaddleConfigWindow::SelectedMapping() {
+    // Only paddles have a configurable fallback mapping. Standard buttons
+    // return nullptr; callers must handle this.
     switch (m_selectedPaddle) {
     case 0: return &m_mappings.l4;
     case 1: return &m_mappings.l5;
     case 2: return &m_mappings.r4;
     case 3: return &m_mappings.r5;
-    default: return &m_mappings.qam;
+    case 4: return &m_mappings.qam;
+    default: return nullptr;
     }
 }
 
@@ -641,10 +660,19 @@ void PaddleConfigWindow::RefreshEditorForSelectedPaddle() {
     PaddleAction* action = SelectedAction();
     PaddleMapping* mapping = SelectedMapping();
 
-    int modeIndex = m_modeSelections[m_selectedPaddle];
-    PaddleMapping gamepadTarget = *mapping;
+    // Rebuild mode combo: paddles get 3 modes, standard buttons get a 4th
+    // "Passthrough" mode that corresponds to UseMenuMapping.
+    SendMessageW(m_comboMode, CB_RESETCONTENT, 0, 0);
+    SendMessageW(m_comboMode, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Gamepad button"));
+    SendMessageW(m_comboMode, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Shortcut / macro"));
+    SendMessageW(m_comboMode, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Unmapped"));
+    if (m_selectedPaddle >= kPaddleCount)
+        SendMessageW(m_comboMode, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Passthrough (default)"));
 
-    if (modeIndex == 0 && action->type == PaddleActionType::Gamepad) {
+    int modeIndex = m_modeSelections[m_selectedPaddle];
+    PaddleMapping gamepadTarget = (mapping ? *mapping : PaddleMapping::None);
+
+    if (modeIndex == 0 && action && action->type == PaddleActionType::Gamepad) {
         gamepadTarget = action->gamepadMapping;
     }
 
@@ -659,7 +687,7 @@ void PaddleConfigWindow::RefreshEditorForSelectedPaddle() {
     }
     SendMessageW(m_comboGamepad, CB_SETCURSEL, gamepadIndex, 0);
 
-    SetWindowTextW(m_editBinding, ActionTextForEditor(*action, *mapping).c_str());
+    SetWindowTextW(m_editBinding, ActionTextForEditor(*action, mapping ? *mapping : PaddleMapping::None).c_str());
     Button_SetCheck(m_checkRapid, action->rapidFire ? BST_CHECKED : BST_UNCHECKED);
     RefreshBindingSummary();
     UpdateControlState();
@@ -706,7 +734,7 @@ void PaddleConfigWindow::UpdateControlState() {
     const int modeIndex = CurrentModeSelection();
     const bool gamepadMode = (modeIndex == 0);
     const bool textMode = (modeIndex == 1);
-    const bool noneMode = (modeIndex == 2);
+    const bool noneMode = (modeIndex == 2 || modeIndex == 3); // Unmapped or Passthrough
     EnableWindow(m_comboGamepad, gamepadMode);
     EnableWindow(m_editBinding, textMode);
     SetWindowTextW(m_staticBinding, textMode ? L"Shortcut or macro:" : L"Binding:");
@@ -714,7 +742,7 @@ void PaddleConfigWindow::UpdateControlState() {
     ShowWindow(m_editBinding, textMode ? SW_SHOW : SW_HIDE);
     SetWindowTextW(m_staticBindingHelp,
                    textMode
-                       ? L"Controller: use Capture Input...\r\nShortcut: CTRL+SHIFT+M\r\nMacro: WIN+TAB, ALT+ENTER"
+                       ? L"Controller: use Capture Input...\r\nShortcut: CTRL+SHIFT+M\r\nMacro: WIN+TAB, ALT+ENTER\r\nNumpad: NUM0-NUM9, NUMMUL, NUMADD...\r\nMedia: MEDIA_PLAY, VOL_UP, VOL_MUTE\r\nPunct: SEMICOLON, TILDE, LBRACKET...\r\nAny key: VK_NNN (e.g. VK_191)"
                        : L"");
     ShowWindow(m_staticBindingHelp, textMode ? SW_SHOW : SW_HIDE);
     EnableWindow(m_checkRapid, !noneMode);
@@ -729,7 +757,8 @@ int PaddleConfigWindow::CurrentModeSelection() const {
 }
 
 void PaddleConfigWindow::SetModeSelectionForCurrent(int modeIndex) {
-    if (modeIndex < 0 || modeIndex > 2)
+    const int maxMode = (m_selectedPaddle < kPaddleCount) ? 2 : 3;
+    if (modeIndex < 0 || modeIndex > maxMode)
         modeIndex = 0;
     m_modeSelections[m_selectedPaddle] = modeIndex;
 }
@@ -819,7 +848,7 @@ void PaddleConfigWindow::CommitControllerComboSelection(HWND combo) {
         UseSelectedGameProfile();
     } else if (combo == m_comboPaddleSelect) {
         const int selectedIndex = static_cast<int>(SendMessageW(m_comboPaddleSelect, CB_GETCURSEL, 0, 0));
-        if (selectedIndex >= 0 && selectedIndex < kButtonCount) {
+        if (selectedIndex >= 0 && selectedIndex < kTotalButtonCount) {
             m_selectedPaddle = selectedIndex;
             logging::Logf("[ControllerNav] Selected paddle now=%d", m_selectedPaddle);
             RefreshEditorForSelectedPaddle();
@@ -1027,18 +1056,19 @@ void PaddleConfigWindow::CycleCurrentProfile(int delta) {
 void PaddleConfigWindow::CycleCurrentPaddle(int delta) {
     m_selectedPaddle += delta;
     if (m_selectedPaddle < 0)
-        m_selectedPaddle = kButtonCount - 1;
-    if (m_selectedPaddle >= kButtonCount)
+        m_selectedPaddle = kTotalButtonCount - 1;
+    if (m_selectedPaddle >= kTotalButtonCount)
         m_selectedPaddle = 0;
     RefreshEditorForSelectedPaddle();
     InvalidatePreviewArea();
 }
 
 void PaddleConfigWindow::CycleCurrentMode(int delta) {
+    const int maxMode = (m_selectedPaddle < kPaddleCount) ? 2 : 3;
     int modeIndex = CurrentModeSelection() + delta;
     if (modeIndex < 0)
-        modeIndex = 2;
-    if (modeIndex > 2)
+        modeIndex = maxMode;
+    if (modeIndex > maxMode)
         modeIndex = 0;
     SetModeSelectionForCurrent(modeIndex);
     SendMessageW(m_comboMode, CB_SETCURSEL, modeIndex, 0);
@@ -1352,14 +1382,25 @@ void PaddleConfigWindow::RemoveSelectedGameSource() {
 void PaddleConfigWindow::ApplySelection() {
     PaddleAction* action = SelectedAction();
     PaddleMapping* mapping = SelectedMapping();
+    if (!action) return;
     const int modeIndex = CurrentModeSelection();
+
+    if (modeIndex == 3) {
+        // Passthrough: restore default passthrough behavior for standard buttons.
+        *action = PaddleAction{PaddleActionType::UseMenuMapping};
+        if (mapping) *mapping = PaddleMapping::None;
+        PersistCurrentState();
+        RefreshBindingSummary();
+        InvalidatePreviewArea();
+        return;
+    }
 
     if (modeIndex == 0) {
         const int gamepadIndex = static_cast<int>(SendMessageW(m_comboGamepad, CB_GETCURSEL, 0, 0));
         const PaddleMapping selected = (gamepadIndex >= 0 && gamepadIndex < static_cast<int>(std::size(kGamepadOptions)))
             ? kGamepadOptions[gamepadIndex]
             : PaddleMapping::None;
-        *mapping = selected;
+        if (mapping) *mapping = selected;
         action->type = PaddleActionType::Gamepad;
         action->gamepadMapping = selected;
         action->chord.clear();
@@ -1403,35 +1444,75 @@ void PaddleConfigWindow::ApplySelection() {
 
 RECT PaddleConfigWindow::PaddleRect(int paddleIndex) const {
     switch (paddleIndex) {
-    case 0: return RECT{28, 224, 152, 260};
-    case 1: return RECT{28, 278, 152, 314};
-    case 2: return RECT{438, 224, 562, 260};
-    case 3: return RECT{438, 278, 562, 314};
-    default: return RECT{234, 328, 358, 364};
+    // Back paddles — side labels with arrows
+    case  0: return RECT{ 28, 224, 152, 260};   // L4
+    case  1: return RECT{ 28, 278, 152, 314};   // L5
+    case  2: return RECT{438, 224, 562, 260};   // R4
+    case  3: return RECT{438, 278, 562, 314};   // R5
+    case  4: return RECT{234, 328, 358, 364};   // QAM
+    // Face buttons — compact inline labels on the controller image
+    case  5: return RECT{462, 188, 524, 206};   // A
+    case  6: return RECT{491, 161, 553, 179};   // B
+    case  7: return RECT{433, 161, 495, 179};   // X
+    case  8: return RECT{462, 134, 524, 152};   // Y
+    // Shoulder buttons
+    case  9: return RECT{ 30,  50, 142,  68};   // LB
+    case 10: return RECT{438,  50, 550,  68};   // RB
+    // Navigation buttons
+    case 11: return RECT{213, 177, 270, 195};   // View
+    case 12: return RECT{308, 177, 365, 195};   // Menu
+    case 13: return RECT{258, 200, 320, 218};   // Guide
+    // Stick clicks
+    case 14: return RECT{160, 194, 222, 212};   // L3
+    case 15: return RECT{346, 194, 408, 212};   // R3
+    // D-pad
+    case 16: return RECT{106, 127, 170, 145};   // DPad Up
+    case 17: return RECT{106, 184, 170, 202};   // DPad Down
+    case 18: return RECT{ 76, 156, 140, 174};   // DPad Left
+    case 19: return RECT{140, 156, 204, 174};   // DPad Right
+    // Triggers — row above LB/RB
+    case 20: return RECT{ 28, 28, 142, 46};    // L2
+    case 21: return RECT{438, 28, 550, 46};    // R2
+    default: return RECT{0, 0, 0, 0};
     }
 }
 
 POINT PaddleConfigWindow::PaddleAnchor(int paddleIndex) const {
+    // For paddles (0-4) the anchor is the physical button on the controller image
+    // and the label is off to the side — we draw an arrow between them.
+    // For standard buttons (5+) the label IS on the button, so anchor == center.
     switch (paddleIndex) {
     case 0: return POINT{192, 251};
     case 1: return POINT{180, 306};
     case 2: return POINT{410, 251};
     case 3: return POINT{421, 306};
-    default: return POINT{295, 300};
+    case 4: return POINT{295, 300};
+    default: {
+        RECT r = PaddleRect(paddleIndex);
+        return POINT{(r.left + r.right) / 2, (r.top + r.bottom) / 2};
+    }
     }
 }
 
 std::wstring PaddleConfigWindow::PaddleLabelText(int paddleIndex) const {
-    const PaddleAction paddleActions[] = { m_actions.l4, m_actions.l5, m_actions.r4, m_actions.r5, m_actions.qam };
-    const PaddleMapping paddleMappings[] = { m_mappings.l4, m_mappings.l5, m_mappings.r4, m_mappings.r5, m_mappings.qam };
-    if (paddleIndex < 0 || paddleIndex >= kButtonCount)
+    if (paddleIndex < 0 || paddleIndex >= kTotalButtonCount)
         return {};
+    const PaddleAction* action = GetButtonAction(m_actions, paddleIndex);
+    if (!action)
+        return {};
+    // Paddles (0-4) have a fallback gamepad mapping; standard buttons do not.
+    static const PaddleMapping kNoMapping{};
+    const PaddleMapping paddleMappings[] = {
+        m_mappings.l4, m_mappings.l5, m_mappings.r4, m_mappings.r5, m_mappings.qam
+    };
+    const PaddleMapping& resolvedMapping = (paddleIndex < kPaddleCount)
+        ? paddleMappings[paddleIndex] : kNoMapping;
     return std::wstring(PaddleName(paddleIndex)) + L": " +
-        PaddleConfig::Describe(paddleActions[paddleIndex], paddleMappings[paddleIndex]);
+        PaddleConfig::Describe(*action, resolvedMapping);
 }
 
 int PaddleConfigWindow::HitTestPaddleLabel(POINT pt) const {
-    for (int i = 0; i < kButtonCount; ++i) {
+    for (int i = 0; i < kTotalButtonCount; ++i) {
         RECT rect = PaddleRect(i);
         if (PtInRect(&rect, pt))
             return i;
@@ -1466,43 +1547,62 @@ void PaddleConfigWindow::Paint(HDC hdc) {
         DeleteObject(pen);
     }
 
-    for (int i = 0; i < kButtonCount; ++i) {
+    for (int i = 0; i < kTotalButtonCount; ++i) {
         RECT rect = PaddleRect(i);
-        COLORREF fill = (i == m_selectedPaddle) ? RGB(30, 120, 200) : RGB(255, 255, 255);
-        COLORREF text = (i == m_selectedPaddle) ? RGB(255, 255, 255) : RGB(20, 24, 28);
-        HBRUSH pill = CreateSolidBrush(fill);
-        FillRect(hdc, &rect, pill);
-        DeleteObject(pill);
-        FrameRect(hdc, &rect, reinterpret_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
+        if (rect.left == rect.right && rect.top == rect.bottom)
+            continue; // no defined position
+        const bool selected = (i == m_selectedPaddle);
+        COLORREF fill = selected ? RGB(30, 120, 200) : RGB(255, 255, 255);
+        COLORREF text = selected ? RGB(255, 255, 255) : RGB(20, 24, 28);
 
-        POINT anchor = PaddleAnchor(i);
-        HPEN arrowPen = CreatePen(PS_SOLID, 2, fill);
-        HGDIOBJ oldArrowPen = SelectObject(hdc, arrowPen);
-        const int midY = (rect.top + rect.bottom) / 2;
-        const int targetX = (i < 2) ? rect.right : ((i < 4) ? rect.left : (rect.left + rect.right) / 2);
-        MoveToEx(hdc, anchor.x, anchor.y, nullptr);
-        LineTo(hdc, targetX, midY);
-        if (i < 2) {
-            LineTo(hdc, targetX - 10, midY - 6);
-            MoveToEx(hdc, targetX, midY, nullptr);
-            LineTo(hdc, targetX - 10, midY + 6);
-        } else if (i < 4) {
-            LineTo(hdc, targetX + 10, midY - 6);
-            MoveToEx(hdc, targetX, midY, nullptr);
-            LineTo(hdc, targetX + 10, midY + 6);
+        if (i < kPaddleCount) {
+            // Side-label paddles: filled pill + arrow from anchor
+            HBRUSH pill = CreateSolidBrush(fill);
+            FillRect(hdc, &rect, pill);
+            DeleteObject(pill);
+            FrameRect(hdc, &rect, reinterpret_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
+
+            POINT anchor = PaddleAnchor(i);
+            HPEN arrowPen = CreatePen(PS_SOLID, 2, fill);
+            HGDIOBJ oldArrowPen = SelectObject(hdc, arrowPen);
+            const int midY = (rect.top + rect.bottom) / 2;
+            const int targetX = (i < 2) ? rect.right : ((i < 4) ? rect.left : (rect.left + rect.right) / 2);
+            MoveToEx(hdc, anchor.x, anchor.y, nullptr);
+            LineTo(hdc, targetX, midY);
+            if (i < 2) {
+                LineTo(hdc, targetX - 10, midY - 6);
+                MoveToEx(hdc, targetX, midY, nullptr);
+                LineTo(hdc, targetX - 10, midY + 6);
+            } else if (i < 4) {
+                LineTo(hdc, targetX + 10, midY - 6);
+                MoveToEx(hdc, targetX, midY, nullptr);
+                LineTo(hdc, targetX + 10, midY + 6);
+            } else {
+                LineTo(hdc, targetX - 6, midY + 10);
+                MoveToEx(hdc, targetX, midY, nullptr);
+                LineTo(hdc, targetX + 6, midY + 10);
+            }
+            SelectObject(hdc, oldArrowPen);
+            DeleteObject(arrowPen);
+
+            std::wstring label = PaddleLabelText(i);
+            SetTextColor(hdc, text);
+            RECT textRect = rect;
+            textRect.left += 6;
+            DrawTextW(hdc, label.c_str(), -1, &textRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
         } else {
-            LineTo(hdc, targetX - 6, midY + 10);
-            MoveToEx(hdc, targetX, midY, nullptr);
-            LineTo(hdc, targetX + 6, midY + 10);
-        }
-        SelectObject(hdc, oldArrowPen);
-        DeleteObject(arrowPen);
+            // Standard buttons sit on the controller image — small highlight overlay.
+            COLORREF overlayFill = selected ? RGB(30, 120, 200) : RGB(255, 255, 255);
+            HBRUSH br = CreateSolidBrush(overlayFill);
+            FillRect(hdc, &rect, br);
+            DeleteObject(br);
+            FrameRect(hdc, &rect, reinterpret_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
 
-        std::wstring label = PaddleLabelText(i);
-        SetTextColor(hdc, text);
-        RECT textRect = rect;
-        textRect.left += 6;
-        DrawTextW(hdc, label.c_str(), -1, &textRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+            // Draw just the button name (short) centered in the box.
+            SetTextColor(hdc, text);
+            DrawTextW(hdc, PaddleName(i), -1, &rect,
+                DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+        }
     }
 
     if (HWND focused = ControllerFocusHwnd()) {

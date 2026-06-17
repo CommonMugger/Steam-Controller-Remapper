@@ -19,6 +19,6 @@ private:
     PaddleActionBindings m_bindings{};
     KeyChordCallback     m_keyChordCallback;
     bool                 m_hasSeededState = false;
-    bool                 m_prevPressed[5] = {false, false, false, false, false};
-    unsigned long long   m_lastFireTickMs[5] = {0, 0, 0, 0, 0};
+    bool                 m_prevPressed[kTotalButtonCount] = {};
+    unsigned long long   m_lastFireTickMs[kTotalButtonCount] = {};
 };

@@ -254,53 +254,139 @@ PaddleMapping ResolvePaddleGamepadMapping(PaddleMapping menuMapping, const Paddl
     return PaddleMapping::None;
 }
 
-static bool IsPaddlePressed(const uint8_t* buf, int paddleIndex) {
+static bool IsButtonPressed(const uint8_t* buf, size_t n, int index,
+                             const StandardGamepadState* standardState) {
+    if (standardState && standardState->connected) {
+        switch (index) {
+        case  0: return standardState->leftPaddle1;
+        case  1: return standardState->leftPaddle2;
+        case  2: return standardState->rightPaddle1;
+        case  3: return standardState->rightPaddle2;
+        case  4: return standardState->misc1 || standardState->touchpadButton;
+        case  5: return standardState->a;
+        case  6: return standardState->b;
+        case  7: return standardState->x;
+        case  8: return standardState->y;
+        case  9: return standardState->leftShoulder;
+        case 10: return standardState->rightShoulder;
+        case 11: return standardState->back;
+        case 12: return standardState->start;
+        case 13: return standardState->guide;
+        case 14: return standardState->leftStick;
+        case 15: return standardState->rightStick;
+        case 16: return standardState->dpadUp;
+        case 17: return standardState->dpadDown;
+        case 18: return standardState->dpadLeft;
+        case 19: return standardState->dpadRight;
+        case 20: return standardState->leftTrigger  > 50;
+        case 21: return standardState->rightTrigger > 50;
+        default: return false;
+        }
+    }
+    if (!SteamController::UsesLegacyStateLayout(buf, n))
+        return false;
     const uint8_t b0 = buf[2];
     const uint8_t b1 = buf[3];
     const uint8_t b2 = buf[4];
-    switch (paddleIndex) {
-    case 0: return (b2 & SteamController::BTN_L4) != 0;
-    case 1: return (b2 & SteamController::BTN_L5) != 0;
-    case 2: return (b0 & SteamController::BTN_R4) != 0;
-    case 3: return (b1 & SteamController::BTN_R5) != 0;
-    default: return (b0 & SteamController::BTN_QAM) != 0;
+    switch (index) {
+    case  0: return (b2 & SteamController::BTN_L4)       != 0;
+    case  1: return (b2 & SteamController::BTN_L5)       != 0;
+    case  2: return (b0 & SteamController::BTN_R4)       != 0;
+    case  3: return (b1 & SteamController::BTN_R5)       != 0;
+    case  4: return (b0 & SteamController::BTN_QAM)      != 0;
+    case  5: return (b0 & SteamController::BTN_A)        != 0;
+    case  6: return (b0 & SteamController::BTN_B)        != 0;
+    case  7: return (b0 & SteamController::BTN_X)        != 0;
+    case  8: return (b0 & SteamController::BTN_Y)        != 0;
+    case  9: return (b2 & SteamController::BTN_LB)       != 0;
+    case 10: return (b1 & SteamController::BTN_RB)       != 0;
+    case 11: return (b1 & SteamController::BTN_VIEW)     != 0;
+    case 12: return (b0 & SteamController::BTN_MENU)     != 0;
+    case 13: return (b2 & SteamController::BTN_STEAM)    != 0;
+    case 14: return (b1 & SteamController::BTN_LS)       != 0;
+    case 15: return (b0 & SteamController::BTN_RS)       != 0;
+    case 16: return (b1 & SteamController::BTN_DPAD_UP)  != 0;
+    case 17: return (b1 & SteamController::BTN_DPAD_DN)  != 0;
+    case 18: return (b1 & SteamController::BTN_DPAD_LT)  != 0;
+    case 19: return (b1 & SteamController::BTN_DPAD_RT)  != 0;
+    // Triggers: 16-bit LE at buf[6..7] (LT) and buf[8..9] (RT), range 0–0x7FFF.
+    case 20: return n > 7  && (static_cast<int16_t>(buf[6]  | (buf[7]  << 8))) > 0x1000;
+    case 21: return n > 9  && (static_cast<int16_t>(buf[8]  | (buf[9]  << 8))) > 0x1000;
+    default: return false;
     }
 }
 
-void ApplyPaddleMappings(XusbReport& report, const uint8_t* buf, size_t n,
-                         const StandardGamepadState* standardState,
-                         const PaddleMappings& mappings,
-                         const PaddleActionBindings& actions,
-                         bool prevPressed[5]) {
-    const PaddleMapping menuMappings[] = {
+// Returns the XusbReport button bit for a standard button (index 5–19), or 0.
+static uint16_t GetStandardButtonXusbBit(int index) {
+    switch (index) {
+    case  5: return XUSB_GAMEPAD_A;
+    case  6: return XUSB_GAMEPAD_B;
+    case  7: return XUSB_GAMEPAD_X;
+    case  8: return XUSB_GAMEPAD_Y;
+    case  9: return XUSB_GAMEPAD_LEFT_SHOULDER;
+    case 10: return XUSB_GAMEPAD_RIGHT_SHOULDER;
+    case 11: return XUSB_GAMEPAD_BACK;
+    case 12: return XUSB_GAMEPAD_START;
+    case 13: return XUSB_GAMEPAD_GUIDE;
+    case 14: return XUSB_GAMEPAD_LEFT_THUMB;
+    case 15: return XUSB_GAMEPAD_RIGHT_THUMB;
+    case 16: return XUSB_GAMEPAD_DPAD_UP;
+    case 17: return XUSB_GAMEPAD_DPAD_DOWN;
+    case 18: return XUSB_GAMEPAD_DPAD_LEFT;
+    case 19: return XUSB_GAMEPAD_DPAD_RIGHT;
+    default: return 0;
+    }
+}
+
+void ApplyAllButtonRemaps(XusbReport& report, const uint8_t* buf, size_t n,
+                          const StandardGamepadState* standardState,
+                          const PaddleMappings& mappings,
+                          const PaddleActionBindings& actions,
+                          bool prevPressed[kTotalButtonCount]) {
+    const PaddleMapping paddleMenuMappings[] = {
         mappings.l4, mappings.l5, mappings.r4, mappings.r5, mappings.qam
     };
-    const PaddleAction actionList[] = {
-        actions.l4, actions.l5, actions.r4, actions.r5, actions.qam
-    };
 
-    for (int i = 0; i < 5; ++i) {
-        bool pressed = false;
-        if (standardState && standardState->connected) {
-            switch (i) {
-            case 0: pressed = standardState->leftPaddle1; break;
-            case 1: pressed = standardState->leftPaddle2; break;
-            case 2: pressed = standardState->rightPaddle1; break;
-            case 3: pressed = standardState->rightPaddle2; break;
-            default: pressed = standardState->misc1 || standardState->touchpadButton; break;
+    for (int i = 0; i < kTotalButtonCount; ++i) {
+        const bool pressed = IsButtonPressed(buf, n, i, standardState);
+        const PaddleAction* actionPtr = GetButtonAction(actions, i);
+        const PaddleAction& action = actionPtr ? *actionPtr : PaddleAction{};
+
+        if (i < kPaddleCount) {
+            // Paddles: apply gamepad mapping to the XusbReport when pressed.
+            const PaddleMapping mapping = ResolvePaddleGamepadMapping(paddleMenuMappings[i], action);
+            const bool active = pressed && (
+                action.rapidFire ? ((GetTickCount64() / 90) % 2 == 0) :
+                (action.type == PaddleActionType::UseMenuMapping ||
+                 action.type == PaddleActionType::Gamepad));
+            if (active)
+                ApplyPaddleMapping(report, mapping);
+        } else if (i == 20 || i == 21) {
+            // Triggers: suppress the analog axis and optionally remap.
+            if (action.type != PaddleActionType::UseMenuMapping) {
+                uint8_t& triggerAxis = (i == 20) ? report.leftTrigger : report.rightTrigger;
+                triggerAxis = 0;
+                if (action.type == PaddleActionType::Gamepad && pressed) {
+                    const bool rapidOk = !action.rapidFire || (GetTickCount64() / 90) % 2 == 0;
+                    if (rapidOk)
+                        ApplyPaddleMapping(report, action.gamepadMapping);
+                }
             }
-        } else if (SteamController::UsesLegacyStateLayout(buf, n)) {
-            pressed = IsPaddlePressed(buf, i);
+        } else {
+            // Standard buttons: suppress from XusbReport and apply the remap
+            // when the action is anything other than UseMenuMapping (passthrough).
+            if (action.type != PaddleActionType::UseMenuMapping) {
+                const uint16_t originalBit = GetStandardButtonXusbBit(i);
+                report.buttons &= static_cast<uint16_t>(~originalBit); // suppress original
+
+                if (action.type == PaddleActionType::Gamepad && pressed) {
+                    const bool rapidOk = !action.rapidFire || (GetTickCount64() / 90) % 2 == 0;
+                    if (rapidOk)
+                        ApplyPaddleMapping(report, action.gamepadMapping);
+                }
+                // KeyChord / Macro / None: bit cleared; PaddleOverlay fires key events.
+            }
         }
-
-        const PaddleAction& action = actionList[i];
-        const PaddleMapping mapping = ResolvePaddleGamepadMapping(menuMappings[i], action);
-        const bool active = pressed && (
-            action.rapidFire ? ((GetTickCount64() / 90) % 2 == 0) :
-            (action.type == PaddleActionType::UseMenuMapping || action.type == PaddleActionType::Gamepad));
-        if (active)
-            ApplyPaddleMapping(report, mapping);
-
         prevPressed[i] = pressed;
     }
 }
@@ -311,22 +397,20 @@ int8_t ScaleThumbToDs4(int16_t value) {
 }
 
 uint8_t BuildDs4Dpad(const XusbReport& xusb) {
-    // NOTE: despite the DS4_DPAD_* hat-enum constants exposed in libVIIPER.h,
-    // VIIPER's DS4 device actually interprets the DPad field as a *direction
-    // bitmask* (it tests `DPad & DPadUp`, `DPad & DPadRight`, ...). The bit
-    // values below come from VIIPER's dualshock4/const.go. Sending the hat-enum
-    // value instead made neutral (0x08) read as Right and scrambled directions.
-    constexpr uint8_t DPAD_BIT_UP    = 0x01;
-    constexpr uint8_t DPAD_BIT_DOWN  = 0x02;
-    constexpr uint8_t DPAD_BIT_LEFT  = 0x04;
-    constexpr uint8_t DPAD_BIT_RIGHT = 0x08;
+    const bool up    = (xusb.buttons & XUSB_GAMEPAD_DPAD_UP)    != 0;
+    const bool down  = (xusb.buttons & XUSB_GAMEPAD_DPAD_DOWN)  != 0;
+    const bool left  = (xusb.buttons & XUSB_GAMEPAD_DPAD_LEFT)  != 0;
+    const bool right = (xusb.buttons & XUSB_GAMEPAD_DPAD_RIGHT) != 0;
 
-    uint8_t bits = 0;
-    if (xusb.buttons & XUSB_GAMEPAD_DPAD_UP)    bits |= DPAD_BIT_UP;
-    if (xusb.buttons & XUSB_GAMEPAD_DPAD_DOWN)  bits |= DPAD_BIT_DOWN;
-    if (xusb.buttons & XUSB_GAMEPAD_DPAD_LEFT)  bits |= DPAD_BIT_LEFT;
-    if (xusb.buttons & XUSB_GAMEPAD_DPAD_RIGHT) bits |= DPAD_BIT_RIGHT;
-    return bits;  // 0 = neutral (VIIPER maps no bits set to the released hat)
+    if (up   && right) return DS4_DPAD_UP_RIGHT;
+    if (down && right) return DS4_DPAD_DOWN_RIGHT;
+    if (down && left)  return DS4_DPAD_DOWN_LEFT;
+    if (up   && left)  return DS4_DPAD_UP_LEFT;
+    if (up)    return DS4_DPAD_UP;
+    if (right) return DS4_DPAD_RIGHT;
+    if (down)  return DS4_DPAD_DOWN;
+    if (left)  return DS4_DPAD_LEFT;
+    return DS4_DPAD_NEUTRAL;
 }
 
 DS4DeviceState TranslateDs4(const XusbReport& xusb) {
@@ -410,7 +494,7 @@ VirtualController::VirtualController(EmulationMode mode, PaddleMappings paddleMa
 
     bool ok = false;
     if (m_mode == EmulationMode::DualShock4) {
-        ok = api.CreateDS4DeviceFn(m_serverHandle, &m_deviceHandle, m_busId, true, 0, 0) != 0;
+        ok = api.CreateDS4DeviceFn(m_serverHandle, &m_deviceHandle, m_busId, true, 0, 0, nullptr) != 0;
         if (ok)
             ok = api.SetDS4OutputCallbackFn(m_deviceHandle, &VirtualController::ViiperDs4OutputCallback) != 0;
     } else {
@@ -488,6 +572,10 @@ VirtualController::~VirtualController() {
             api.SetXbox360RumbleCallbackFn(m_deviceHandle, nullptr);
             api.RemoveXbox360DeviceFn(m_deviceHandle);
         }
+        // Give the USB bus a moment to process the device removal before
+        // tearing down the server. Without this, CloseUSBServerFn can race
+        // the async USB cleanup and trigger an error dialog from VIIPER.
+        Sleep(150);
     }
 
     if (api.loaded && m_serverHandle)
@@ -509,7 +597,7 @@ void VirtualController::Update(const uint8_t* buf, size_t n, const StandardGamep
         m_loggedSdlState = false;
     }
 
-    ApplyPaddleMappings(xusb, buf, n, standardState, m_paddleMappings, m_paddleActions, m_prevPaddlePressed);
+    ApplyAllButtonRemaps(xusb, buf, n, standardState, m_paddleMappings, m_paddleActions, m_prevPaddlePressed);
 
     ViiperApi& api = GetViiperApi();
     if (m_mode == EmulationMode::DualShock4) {
