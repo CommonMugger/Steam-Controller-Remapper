@@ -44,4 +44,6 @@ struct StandardGamepadState {
     float touchpad1X = 0.0f;
     float touchpad1Y = 0.0f;
     float touchpad1Pressure = 0.0f;
+    // Battery level 0–100, or -1 if unavailable/unknown.
+    int batteryPercent = -1;
 };

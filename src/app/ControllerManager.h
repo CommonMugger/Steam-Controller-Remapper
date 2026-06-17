@@ -72,6 +72,7 @@ public:
     std::wstring GetCurrentMacroCaptureChord() const;
     UiNavigationState GetUiNavigationState() const;
     std::wstring GetControllerReportSignature() const;
+    int GetBatteryPercent() const;
 
 private:
     StandardGamepadState GetLatestStandardState() const;

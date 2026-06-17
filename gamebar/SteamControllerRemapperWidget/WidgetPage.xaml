@@ -18,6 +18,7 @@
             <StackPanel Spacing="4">
                 <TextBlock x:Name="ActiveProfileTextBlock" Text="Active profile: -" />
                 <TextBlock x:Name="DetectedGameTextBlock" Text="Detected game: -" />
+                <TextBlock x:Name="BatteryTextBlock" Text="" Foreground="{ThemeResource SystemControlForegroundBaseMediumBrush}" />
                 <TextBlock x:Name="StatusTextBlock" Text="Connecting..." Foreground="{ThemeResource SystemControlForegroundBaseMediumBrush}" TextWrapping="WrapWholeWords" />
             </StackPanel>
 

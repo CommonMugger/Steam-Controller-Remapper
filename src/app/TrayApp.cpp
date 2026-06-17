@@ -1502,12 +1502,15 @@ void TrayApp::PublishWidgetState() {
     const std::wstring detectedProfileId = GetDetectedGameProfileId();
     const RemapProfile* profile = m_remapBackend.GetActiveProfile();
 
+    const int batteryPercent = m_controller ? m_controller->GetBatteryPercent() : -1;
+
     std::ostringstream json;
     json << "{"
          << "\"activeProfileId\":\"" << JsonEscape(activeProfileId) << "\","
          << "\"detectedProfileId\":\"" << JsonEscape(detectedProfileId) << "\","
          << "\"autoSwitchProfiles\":" << JsonBool(m_autoSwitchProfiles) << ","
          << "\"steamRunning\":" << JsonBool(m_steamRunning) << ","
+         << "\"batteryPercent\":" << batteryPercent << ","
          << "\"installedGames\":[";
     for (size_t i = 0; i < games.size(); ++i) {
         if (i != 0)

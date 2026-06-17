@@ -341,6 +341,11 @@ StandardGamepadState ControllerManager::GetLatestStandardState() const {
     return m_lastStandardState;
 }
 
+int ControllerManager::GetBatteryPercent() const {
+    std::lock_guard<std::mutex> lock(m_standardStateMutex);
+    return m_lastStandardState.batteryPercent;
+}
+
 std::wstring ControllerManager::GetCurrentMacroCaptureChord() const {
     std::array<uint8_t, 64> buf{};
     size_t n = 0;

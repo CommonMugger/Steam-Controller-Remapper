@@ -212,5 +212,15 @@ bool SdlGamepadInput::Poll(StandardGamepadState& state) {
         ReadTouchpadFinger(gamepad, 0, state.touchpad0Down, state.touchpad0X, state.touchpad0Y, state.touchpad0Pressure);
     if (state.touchpadCount > 1)
         ReadTouchpadFinger(gamepad, 1, state.touchpad1Down, state.touchpad1X, state.touchpad1Y, state.touchpad1Pressure);
+
+    SDL_Joystick* joystick = SDL_GetGamepadJoystick(gamepad);
+    if (joystick) {
+        int percent = -1;
+        SDL_PowerState ps = SDL_GetJoystickPowerInfo(joystick, &percent);
+        state.batteryPercent =
+            (ps == SDL_POWERSTATE_ON_BATTERY || ps == SDL_POWERSTATE_CHARGING ||
+             ps == SDL_POWERSTATE_CHARGED)
+            ? percent : -1;
+    }
     return true;
 }
