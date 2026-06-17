@@ -33,3 +33,7 @@ gamebar/SteamControllerRemapperWidget/BundleArtifacts/SteamControllerRemapper-In
 gamebar/SteamControllerRemapperWidget/BundleArtifacts/SteamControllerRemapper-Installer.zip
 gamebar/SteamControllerRemapperWidget/BundleArtifacts/_manualcopy/
 gamebar/SteamControllerRemapperWidget/BundleArtifacts/_repro/
+
+# Inno Setup installer build artifacts
+installer/staging/
+installer/output/

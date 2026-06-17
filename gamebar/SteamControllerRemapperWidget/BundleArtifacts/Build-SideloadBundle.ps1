@@ -2,7 +2,7 @@
 param(
     [string]$OutputFolder,
     [string]$ZipPath,
-    [string]$CertificateThumbprint = 'C212808A52CEC7D75E312D7880CED6D6188A4BE1'
+    [string]$CertificateThumbprint = '7120C3168A21833EC1B8F4C5139F968C2CFA5B64'
 )
 
 $ErrorActionPreference = 'Stop'
