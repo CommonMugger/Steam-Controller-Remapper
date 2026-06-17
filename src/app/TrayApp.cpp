@@ -433,6 +433,29 @@ static PaddleAction* GetPaddleAction(PaddleActionBindings& bindings, const std::
     return nullptr;
 }
 
+static PaddleAction* GetAnyButtonAction(PaddleActionBindings& bindings, const std::wstring& id) {
+    if (PaddleAction* a = GetPaddleAction(bindings, id)) return a;
+    if (_wcsicmp(id.c_str(), L"A") == 0) return &bindings.a;
+    if (_wcsicmp(id.c_str(), L"B") == 0) return &bindings.b;
+    if (_wcsicmp(id.c_str(), L"X") == 0) return &bindings.x;
+    if (_wcsicmp(id.c_str(), L"Y") == 0) return &bindings.y;
+    if (_wcsicmp(id.c_str(), L"LB") == 0) return &bindings.lb;
+    if (_wcsicmp(id.c_str(), L"RB") == 0) return &bindings.rb;
+    if (_wcsicmp(id.c_str(), L"VIEW") == 0) return &bindings.view;
+    if (_wcsicmp(id.c_str(), L"MENU") == 0) return &bindings.menu;
+    if (_wcsicmp(id.c_str(), L"GUIDE") == 0) return &bindings.guide;
+    if (_wcsicmp(id.c_str(), L"L3") == 0) return &bindings.l3;
+    if (_wcsicmp(id.c_str(), L"R3") == 0) return &bindings.r3;
+    if (_wcsicmp(id.c_str(), L"DPADUP") == 0) return &bindings.dpadUp;
+    if (_wcsicmp(id.c_str(), L"DPADDOWN") == 0) return &bindings.dpadDown;
+    if (_wcsicmp(id.c_str(), L"DPADLEFT") == 0) return &bindings.dpadLeft;
+    if (_wcsicmp(id.c_str(), L"DPADRIGHT") == 0) return &bindings.dpadRight;
+    if (_wcsicmp(id.c_str(), L"L2") == 0) return &bindings.l2;
+    if (_wcsicmp(id.c_str(), L"R2") == 0) return &bindings.r2;
+    return nullptr;
+}
+
+
 static PaddleMapping* GetPaddleMapping(PaddleMappings& mappings, const std::wstring& paddleId) {
     if (_wcsicmp(paddleId.c_str(), L"L4") == 0) return &mappings.l4;
     if (_wcsicmp(paddleId.c_str(), L"L5") == 0) return &mappings.l5;
@@ -1409,25 +1432,34 @@ std::string TrayApp::HandleIpcRequest(const std::string& request) {
         if (profileId.empty() || paddleId.empty() || mappingId.empty())
             return "ERR\tinvalid-binding-payload";
 
-        PaddleMapping mapping = PaddleMapping::None;
-        if (!TryParseMappingToken(mappingId, mapping))
-            return "ERR\tinvalid-binding-mapping";
-
         RemapProfile* profile = m_remapBackend.EnsureProfileExists(profileId);
         if (!profile)
             return "ERR\tprofile-not-found";
 
-        PaddleAction* action = GetPaddleAction(profile->actions, paddleId);
-        PaddleMapping* fallback = GetPaddleMapping(profile->mappings, paddleId);
-        if (!action || !fallback)
-            return "ERR\tinvalid-paddle-id";
+        PaddleAction* action = GetAnyButtonAction(profile->actions, paddleId);
+        if (!action)
+            return "ERR\tinvalid-button-id";
 
-        *fallback = mapping;
-        action->type = mapping == PaddleMapping::None ? PaddleActionType::None : PaddleActionType::Gamepad;
-        action->gamepadMappings = mapping == PaddleMapping::None ? std::vector<PaddleMapping>{} : std::vector<PaddleMapping>{ mapping };
-        action->chord.clear();
-        action->macroSteps.clear();
-        action->rapidFire = false;
+        PaddleMapping resolvedMapping = PaddleMapping::None;
+        if (mappingId == L"UseMenuMapping") {
+            action->type = PaddleActionType::UseMenuMapping;
+            action->gamepadMappings.clear();
+            action->chord.clear();
+            action->macroSteps.clear();
+            action->rapidFire = false;
+        } else {
+            if (!TryParseMappingToken(mappingId, resolvedMapping))
+                return "ERR\tinvalid-binding-mapping";
+
+            PaddleMapping* fallback = GetPaddleMapping(profile->mappings, paddleId);
+            if (fallback) *fallback = resolvedMapping;
+
+            action->type = resolvedMapping == PaddleMapping::None ? PaddleActionType::None : PaddleActionType::Gamepad;
+            action->gamepadMappings = resolvedMapping == PaddleMapping::None ? std::vector<PaddleMapping>{} : std::vector<PaddleMapping>{ resolvedMapping };
+            action->chord.clear();
+            action->macroSteps.clear();
+            action->rapidFire = false;
+        }
         m_remapBackend.PersistProfiles();
 
         const std::wstring normalizedProfileId = PaddleConfig::NormalizeProfileId(profileId);
@@ -1438,7 +1470,7 @@ std::string TrayApp::HandleIpcRequest(const std::string& request) {
         json << "{"
              << "\"profileId\":\"" << JsonEscape(normalizedProfileId) << "\","
              << "\"paddle\":\"" << JsonEscape(paddleId) << "\","
-             << "\"mappingToken\":\"" << MappingToken(mapping) << "\""
+             << "\"mappingToken\":\"" << MappingToken(resolvedMapping) << "\""
              << "}";
         return "OK\t" + json.str();
     }
@@ -1486,15 +1518,28 @@ void TrayApp::PublishWidgetState() {
     if (profile) {
         json << ",\"profile\":{"
              << "\"id\":\"" << JsonEscape(profile->id) << "\",";
-        AppendBindingJson(json, "l4", profile->actions.l4, profile->mappings.l4);
-        json << ",";
-        AppendBindingJson(json, "l5", profile->actions.l5, profile->mappings.l5);
-        json << ",";
-        AppendBindingJson(json, "r4", profile->actions.r4, profile->mappings.r4);
-        json << ",";
-        AppendBindingJson(json, "r5", profile->actions.r5, profile->mappings.r5);
-        json << ",";
-        AppendBindingJson(json, "qam", profile->actions.qam, profile->mappings.qam);
+        AppendBindingJson(json, "l4",         profile->actions.l4,        profile->mappings.l4);          json << ",";
+        AppendBindingJson(json, "l5",         profile->actions.l5,        profile->mappings.l5);          json << ",";
+        AppendBindingJson(json, "r4",         profile->actions.r4,        profile->mappings.r4);          json << ",";
+        AppendBindingJson(json, "r5",         profile->actions.r5,        profile->mappings.r5);          json << ",";
+        AppendBindingJson(json, "qam",        profile->actions.qam,       profile->mappings.qam);         json << ",";
+        AppendBindingJson(json, "a",          profile->actions.a,         PaddleMapping::A);              json << ",";
+        AppendBindingJson(json, "b",          profile->actions.b,         PaddleMapping::B);              json << ",";
+        AppendBindingJson(json, "x",          profile->actions.x,         PaddleMapping::X);              json << ",";
+        AppendBindingJson(json, "y",          profile->actions.y,         PaddleMapping::Y);              json << ",";
+        AppendBindingJson(json, "lb",         profile->actions.lb,        PaddleMapping::LeftShoulder);   json << ",";
+        AppendBindingJson(json, "rb",         profile->actions.rb,        PaddleMapping::RightShoulder);  json << ",";
+        AppendBindingJson(json, "view",       profile->actions.view,      PaddleMapping::View);           json << ",";
+        AppendBindingJson(json, "menu",       profile->actions.menu,      PaddleMapping::Menu);           json << ",";
+        AppendBindingJson(json, "guide",      profile->actions.guide,     PaddleMapping::Guide);          json << ",";
+        AppendBindingJson(json, "l3",         profile->actions.l3,        PaddleMapping::LeftThumb);      json << ",";
+        AppendBindingJson(json, "r3",         profile->actions.r3,        PaddleMapping::RightThumb);     json << ",";
+        AppendBindingJson(json, "dpadup",     profile->actions.dpadUp,    PaddleMapping::DPadUp);         json << ",";
+        AppendBindingJson(json, "dpaddown",   profile->actions.dpadDown,  PaddleMapping::DPadDown);       json << ",";
+        AppendBindingJson(json, "dpadleft",   profile->actions.dpadLeft,  PaddleMapping::DPadLeft);       json << ",";
+        AppendBindingJson(json, "dpadright",  profile->actions.dpadRight, PaddleMapping::DPadRight);      json << ",";
+        AppendBindingJson(json, "l2",         profile->actions.l2,        PaddleMapping::None);           json << ",";
+        AppendBindingJson(json, "r2",         profile->actions.r2,        PaddleMapping::None);
         json << "}";
     }
     json << "}";

@@ -35,9 +35,12 @@
 
             <StackPanel Spacing="8">
                 <TextBlock Text="Quick gamepad remaps" />
-                <Grid ColumnSpacing="8" RowSpacing="8">
+
+                <TextBlock Text="BACK PADDLES" FontSize="11" FontWeight="SemiBold"
+                           Foreground="{ThemeResource SystemControlForegroundBaseMediumBrush}" />
+                <Grid ColumnSpacing="8" RowSpacing="6">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="48" />
+                        <ColumnDefinition Width="56" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
@@ -47,41 +50,183 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
-
                     <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Text="L4" />
-                    <ComboBox x:Name="L4ComboBox" Grid.Row="0" Grid.Column="1"
-                              DropDownOpened="ComboBox_DropDownOpened"
-                              DropDownClosed="ComboBox_DropDownClosed"
+                    <ComboBox x:Name="L4ComboBox" Grid.Row="0" Grid.Column="1" HorizontalAlignment="Stretch"
+                              DropDownOpened="ComboBox_DropDownOpened" DropDownClosed="ComboBox_DropDownClosed"
                               SelectionChanged="BindingComboBox_SelectionChanged" />
-
                     <TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" Text="L5" />
-                    <ComboBox x:Name="L5ComboBox" Grid.Row="1" Grid.Column="1"
-                              DropDownOpened="ComboBox_DropDownOpened"
-                              DropDownClosed="ComboBox_DropDownClosed"
+                    <ComboBox x:Name="L5ComboBox" Grid.Row="1" Grid.Column="1" HorizontalAlignment="Stretch"
+                              DropDownOpened="ComboBox_DropDownOpened" DropDownClosed="ComboBox_DropDownClosed"
                               SelectionChanged="BindingComboBox_SelectionChanged" />
-
                     <TextBlock Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" Text="R4" />
-                    <ComboBox x:Name="R4ComboBox" Grid.Row="2" Grid.Column="1"
-                              DropDownOpened="ComboBox_DropDownOpened"
-                              DropDownClosed="ComboBox_DropDownClosed"
+                    <ComboBox x:Name="R4ComboBox" Grid.Row="2" Grid.Column="1" HorizontalAlignment="Stretch"
+                              DropDownOpened="ComboBox_DropDownOpened" DropDownClosed="ComboBox_DropDownClosed"
                               SelectionChanged="BindingComboBox_SelectionChanged" />
-
                     <TextBlock Grid.Row="3" Grid.Column="0" VerticalAlignment="Center" Text="R5" />
-                    <ComboBox x:Name="R5ComboBox" Grid.Row="3" Grid.Column="1"
-                              DropDownOpened="ComboBox_DropDownOpened"
-                              DropDownClosed="ComboBox_DropDownClosed"
+                    <ComboBox x:Name="R5ComboBox" Grid.Row="3" Grid.Column="1" HorizontalAlignment="Stretch"
+                              DropDownOpened="ComboBox_DropDownOpened" DropDownClosed="ComboBox_DropDownClosed"
                               SelectionChanged="BindingComboBox_SelectionChanged" />
-
                     <TextBlock Grid.Row="4" Grid.Column="0" VerticalAlignment="Center" Text="QAM" />
-                    <ComboBox x:Name="QamComboBox" Grid.Row="4" Grid.Column="1"
-                              DropDownOpened="ComboBox_DropDownOpened"
-                              DropDownClosed="ComboBox_DropDownClosed"
+                    <ComboBox x:Name="QamComboBox" Grid.Row="4" Grid.Column="1" HorizontalAlignment="Stretch"
+                              DropDownOpened="ComboBox_DropDownOpened" DropDownClosed="ComboBox_DropDownClosed"
                               SelectionChanged="BindingComboBox_SelectionChanged" />
                 </Grid>
+
+                <TextBlock Text="FACE BUTTONS" FontSize="11" FontWeight="SemiBold" Margin="0,4,0,0"
+                           Foreground="{ThemeResource SystemControlForegroundBaseMediumBrush}" />
+                <Grid ColumnSpacing="8" RowSpacing="6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="56" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Text="A" />
+                    <ComboBox x:Name="AComboBox" Grid.Row="0" Grid.Column="1" HorizontalAlignment="Stretch"
+                              DropDownOpened="ComboBox_DropDownOpened" DropDownClosed="ComboBox_DropDownClosed"
+                              SelectionChanged="BindingComboBox_SelectionChanged" />
+                    <TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" Text="B" />
+                    <ComboBox x:Name="BComboBox" Grid.Row="1" Grid.Column="1" HorizontalAlignment="Stretch"
+                              DropDownOpened="ComboBox_DropDownOpened" DropDownClosed="ComboBox_DropDownClosed"
+                              SelectionChanged="BindingComboBox_SelectionChanged" />
+                    <TextBlock Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" Text="X" />
+                    <ComboBox x:Name="XComboBox" Grid.Row="2" Grid.Column="1" HorizontalAlignment="Stretch"
+                              DropDownOpened="ComboBox_DropDownOpened" DropDownClosed="ComboBox_DropDownClosed"
+                              SelectionChanged="BindingComboBox_SelectionChanged" />
+                    <TextBlock Grid.Row="3" Grid.Column="0" VerticalAlignment="Center" Text="Y" />
+                    <ComboBox x:Name="YComboBox" Grid.Row="3" Grid.Column="1" HorizontalAlignment="Stretch"
+                              DropDownOpened="ComboBox_DropDownOpened" DropDownClosed="ComboBox_DropDownClosed"
+                              SelectionChanged="BindingComboBox_SelectionChanged" />
+                </Grid>
+
+                <TextBlock Text="BUMPERS" FontSize="11" FontWeight="SemiBold" Margin="0,4,0,0"
+                           Foreground="{ThemeResource SystemControlForegroundBaseMediumBrush}" />
+                <Grid ColumnSpacing="8" RowSpacing="6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="56" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Text="LB" />
+                    <ComboBox x:Name="LbComboBox" Grid.Row="0" Grid.Column="1" HorizontalAlignment="Stretch"
+                              DropDownOpened="ComboBox_DropDownOpened" DropDownClosed="ComboBox_DropDownClosed"
+                              SelectionChanged="BindingComboBox_SelectionChanged" />
+                    <TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" Text="RB" />
+                    <ComboBox x:Name="RbComboBox" Grid.Row="1" Grid.Column="1" HorizontalAlignment="Stretch"
+                              DropDownOpened="ComboBox_DropDownOpened" DropDownClosed="ComboBox_DropDownClosed"
+                              SelectionChanged="BindingComboBox_SelectionChanged" />
+                </Grid>
+
+                <TextBlock Text="TRIGGERS" FontSize="11" FontWeight="SemiBold" Margin="0,4,0,0"
+                           Foreground="{ThemeResource SystemControlForegroundBaseMediumBrush}" />
+                <Grid ColumnSpacing="8" RowSpacing="6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="56" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Text="L2" />
+                    <ComboBox x:Name="L2ComboBox" Grid.Row="0" Grid.Column="1" HorizontalAlignment="Stretch"
+                              DropDownOpened="ComboBox_DropDownOpened" DropDownClosed="ComboBox_DropDownClosed"
+                              SelectionChanged="BindingComboBox_SelectionChanged" />
+                    <TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" Text="R2" />
+                    <ComboBox x:Name="R2ComboBox" Grid.Row="1" Grid.Column="1" HorizontalAlignment="Stretch"
+                              DropDownOpened="ComboBox_DropDownOpened" DropDownClosed="ComboBox_DropDownClosed"
+                              SelectionChanged="BindingComboBox_SelectionChanged" />
+                </Grid>
+
+                <TextBlock Text="STICKS" FontSize="11" FontWeight="SemiBold" Margin="0,4,0,0"
+                           Foreground="{ThemeResource SystemControlForegroundBaseMediumBrush}" />
+                <Grid ColumnSpacing="8" RowSpacing="6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="56" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Text="L3" />
+                    <ComboBox x:Name="L3ComboBox" Grid.Row="0" Grid.Column="1" HorizontalAlignment="Stretch"
+                              DropDownOpened="ComboBox_DropDownOpened" DropDownClosed="ComboBox_DropDownClosed"
+                              SelectionChanged="BindingComboBox_SelectionChanged" />
+                    <TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" Text="R3" />
+                    <ComboBox x:Name="R3ComboBox" Grid.Row="1" Grid.Column="1" HorizontalAlignment="Stretch"
+                              DropDownOpened="ComboBox_DropDownOpened" DropDownClosed="ComboBox_DropDownClosed"
+                              SelectionChanged="BindingComboBox_SelectionChanged" />
+                </Grid>
+
+                <TextBlock Text="D-PAD" FontSize="11" FontWeight="SemiBold" Margin="0,4,0,0"
+                           Foreground="{ThemeResource SystemControlForegroundBaseMediumBrush}" />
+                <Grid ColumnSpacing="8" RowSpacing="6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="56" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Text="Up" />
+                    <ComboBox x:Name="DpadUpComboBox" Grid.Row="0" Grid.Column="1" HorizontalAlignment="Stretch"
+                              DropDownOpened="ComboBox_DropDownOpened" DropDownClosed="ComboBox_DropDownClosed"
+                              SelectionChanged="BindingComboBox_SelectionChanged" />
+                    <TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" Text="Down" />
+                    <ComboBox x:Name="DpadDownComboBox" Grid.Row="1" Grid.Column="1" HorizontalAlignment="Stretch"
+                              DropDownOpened="ComboBox_DropDownOpened" DropDownClosed="ComboBox_DropDownClosed"
+                              SelectionChanged="BindingComboBox_SelectionChanged" />
+                    <TextBlock Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" Text="Left" />
+                    <ComboBox x:Name="DpadLeftComboBox" Grid.Row="2" Grid.Column="1" HorizontalAlignment="Stretch"
+                              DropDownOpened="ComboBox_DropDownOpened" DropDownClosed="ComboBox_DropDownClosed"
+                              SelectionChanged="BindingComboBox_SelectionChanged" />
+                    <TextBlock Grid.Row="3" Grid.Column="0" VerticalAlignment="Center" Text="Right" />
+                    <ComboBox x:Name="DpadRightComboBox" Grid.Row="3" Grid.Column="1" HorizontalAlignment="Stretch"
+                              DropDownOpened="ComboBox_DropDownOpened" DropDownClosed="ComboBox_DropDownClosed"
+                              SelectionChanged="BindingComboBox_SelectionChanged" />
+                </Grid>
+
+                <TextBlock Text="SYSTEM" FontSize="11" FontWeight="SemiBold" Margin="0,4,0,0"
+                           Foreground="{ThemeResource SystemControlForegroundBaseMediumBrush}" />
+                <Grid ColumnSpacing="8" RowSpacing="6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="56" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" Text="View" />
+                    <ComboBox x:Name="ViewComboBox" Grid.Row="0" Grid.Column="1" HorizontalAlignment="Stretch"
+                              DropDownOpened="ComboBox_DropDownOpened" DropDownClosed="ComboBox_DropDownClosed"
+                              SelectionChanged="BindingComboBox_SelectionChanged" />
+                    <TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" Text="Menu" />
+                    <ComboBox x:Name="MenuComboBox" Grid.Row="1" Grid.Column="1" HorizontalAlignment="Stretch"
+                              DropDownOpened="ComboBox_DropDownOpened" DropDownClosed="ComboBox_DropDownClosed"
+                              SelectionChanged="BindingComboBox_SelectionChanged" />
+                    <TextBlock Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" Text="Guide" />
+                    <ComboBox x:Name="GuideComboBox" Grid.Row="2" Grid.Column="1" HorizontalAlignment="Stretch"
+                              DropDownOpened="ComboBox_DropDownOpened" DropDownClosed="ComboBox_DropDownClosed"
+                              SelectionChanged="BindingComboBox_SelectionChanged" />
+                </Grid>
+
                 <TextBlock x:Name="BindingsHelpTextBlock"
-                           Text="Game Bar remaps currently edit gamepad-button mappings. Choosing a value here will overwrite any key chord or macro on that paddle."
+                           Text="Selecting a button here will overwrite any key chord or macro on that button."
                            Foreground="{ThemeResource SystemControlForegroundBaseMediumBrush}"
-                           TextWrapping="WrapWholeWords" />
+                           TextWrapping="WrapWholeWords" Margin="0,4,0,0" />
             </StackPanel>
 
             <StackPanel Spacing="8">

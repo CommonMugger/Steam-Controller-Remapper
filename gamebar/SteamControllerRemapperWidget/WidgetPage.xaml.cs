@@ -29,6 +29,7 @@ namespace SteamControllerRemapperWidget
 
         private static readonly MappingOption[] BaseMappingOptions =
         {
+            new MappingOption { Token = "UseMenuMapping", Label = "Passthrough (default)" },
             new MappingOption { Token = "None", Label = "Unmapped" },
             new MappingOption { Token = "A", Label = "A / Cross" },
             new MappingOption { Token = "B", Label = "B / Circle" },
@@ -73,11 +74,28 @@ namespace SteamControllerRemapperWidget
         public WidgetPage()
         {
             InitializeComponent();
-            bindingViews.Add(new BindingView { PaddleId = "L4", ComboBox = L4ComboBox });
-            bindingViews.Add(new BindingView { PaddleId = "L5", ComboBox = L5ComboBox });
-            bindingViews.Add(new BindingView { PaddleId = "R4", ComboBox = R4ComboBox });
-            bindingViews.Add(new BindingView { PaddleId = "R5", ComboBox = R5ComboBox });
-            bindingViews.Add(new BindingView { PaddleId = "QAM", ComboBox = QamComboBox });
+            bindingViews.Add(new BindingView { PaddleId = "L4",        ComboBox = L4ComboBox });
+            bindingViews.Add(new BindingView { PaddleId = "L5",        ComboBox = L5ComboBox });
+            bindingViews.Add(new BindingView { PaddleId = "R4",        ComboBox = R4ComboBox });
+            bindingViews.Add(new BindingView { PaddleId = "R5",        ComboBox = R5ComboBox });
+            bindingViews.Add(new BindingView { PaddleId = "QAM",       ComboBox = QamComboBox });
+            bindingViews.Add(new BindingView { PaddleId = "A",         ComboBox = AComboBox });
+            bindingViews.Add(new BindingView { PaddleId = "B",         ComboBox = BComboBox });
+            bindingViews.Add(new BindingView { PaddleId = "X",         ComboBox = XComboBox });
+            bindingViews.Add(new BindingView { PaddleId = "Y",         ComboBox = YComboBox });
+            bindingViews.Add(new BindingView { PaddleId = "LB",        ComboBox = LbComboBox });
+            bindingViews.Add(new BindingView { PaddleId = "RB",        ComboBox = RbComboBox });
+            bindingViews.Add(new BindingView { PaddleId = "L2",        ComboBox = L2ComboBox });
+            bindingViews.Add(new BindingView { PaddleId = "R2",        ComboBox = R2ComboBox });
+            bindingViews.Add(new BindingView { PaddleId = "L3",        ComboBox = L3ComboBox });
+            bindingViews.Add(new BindingView { PaddleId = "R3",        ComboBox = R3ComboBox });
+            bindingViews.Add(new BindingView { PaddleId = "DPADUP",    ComboBox = DpadUpComboBox });
+            bindingViews.Add(new BindingView { PaddleId = "DPADDOWN",  ComboBox = DpadDownComboBox });
+            bindingViews.Add(new BindingView { PaddleId = "DPADLEFT",  ComboBox = DpadLeftComboBox });
+            bindingViews.Add(new BindingView { PaddleId = "DPADRIGHT", ComboBox = DpadRightComboBox });
+            bindingViews.Add(new BindingView { PaddleId = "VIEW",      ComboBox = ViewComboBox });
+            bindingViews.Add(new BindingView { PaddleId = "MENU",      ComboBox = MenuComboBox });
+            bindingViews.Add(new BindingView { PaddleId = "GUIDE",     ComboBox = GuideComboBox });
 
             foreach (BindingView binding in bindingViews)
             {
@@ -304,11 +322,12 @@ namespace SteamControllerRemapperWidget
                     : null;
                 if (profileObject != null)
                 {
-                    UpdateBindingEditor(profileObject, "l4", L4ComboBox);
-                    UpdateBindingEditor(profileObject, "l5", L5ComboBox);
-                    UpdateBindingEditor(profileObject, "r4", R4ComboBox);
-                    UpdateBindingEditor(profileObject, "r5", R5ComboBox);
-                    UpdateBindingEditor(profileObject, "qam", QamComboBox);
+                    foreach (BindingView bv in bindingViews)
+                    {
+                        bool isPaddle = bv.PaddleId == "L4" || bv.PaddleId == "L5" ||
+                                        bv.PaddleId == "R4" || bv.PaddleId == "R5" || bv.PaddleId == "QAM";
+                        UpdateBindingEditor(profileObject, bv.PaddleId.ToLowerInvariant(), bv.ComboBox, isPaddle);
+                    }
                 }
             }
             finally
@@ -317,7 +336,7 @@ namespace SteamControllerRemapperWidget
             }
         }
 
-        private static void UpdateBindingEditor(JsonObject profileObject, string key, ComboBox comboBox)
+        private static void UpdateBindingEditor(JsonObject profileObject, string key, ComboBox comboBox, bool isPaddle = false)
         {
             comboBox.Items.Clear();
             if (!profileObject.ContainsKey(key))
@@ -333,9 +352,10 @@ namespace SteamControllerRemapperWidget
             string actionType = binding.GetNamedString("actionType", "None");
             string mappingToken = binding.GetNamedString("mappingToken", "None");
 
-            if (!string.Equals(actionType, "Gamepad", StringComparison.Ordinal) &&
-                !string.Equals(actionType, "UseMenuMapping", StringComparison.Ordinal) &&
-                !string.Equals(actionType, "None", StringComparison.Ordinal))
+            bool isCustom = !string.Equals(actionType, "Gamepad", StringComparison.Ordinal) &&
+                            !string.Equals(actionType, "UseMenuMapping", StringComparison.Ordinal) &&
+                            !string.Equals(actionType, "None", StringComparison.Ordinal);
+            if (isCustom)
             {
                 comboBox.Items.Add(new MappingOption
                 {
@@ -350,12 +370,16 @@ namespace SteamControllerRemapperWidget
 
             MappingOption selected = comboBox.Items.Cast<MappingOption>()
                 .FirstOrDefault(item => item.IsCustomPlaceholder);
+
             if (selected == null)
             {
+                bool isPassthrough = string.Equals(actionType, "UseMenuMapping", StringComparison.Ordinal);
+                string tokenToMatch = (isPassthrough && !isPaddle) ? "UseMenuMapping" : mappingToken;
                 selected = comboBox.Items.Cast<MappingOption>()
-                    .FirstOrDefault(item => string.Equals(item.Token, mappingToken, StringComparison.OrdinalIgnoreCase)
+                    .FirstOrDefault(item => string.Equals(item.Token, tokenToMatch, StringComparison.OrdinalIgnoreCase)
                                          && !item.IsCustomPlaceholder);
             }
+
             if (selected == null && comboBox.Items.Count > 0)
                 selected = comboBox.Items[0] as MappingOption;
             comboBox.SelectedItem = selected;
