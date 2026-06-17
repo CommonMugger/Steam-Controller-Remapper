@@ -249,7 +249,7 @@ PaddleMapping ResolvePaddleGamepadMapping(PaddleMapping menuMapping, const Paddl
     case PaddleActionType::Macro:
         return PaddleMapping::None;
     case PaddleActionType::Gamepad:
-        return action.gamepadMapping;
+        return action.gamepadMappings.empty() ? PaddleMapping::None : action.gamepadMappings[0];
     }
     return PaddleMapping::None;
 }
@@ -369,7 +369,7 @@ void ApplyAllButtonRemaps(XusbReport& report, const uint8_t* buf, size_t n,
                 if (action.type == PaddleActionType::Gamepad && pressed) {
                     const bool rapidOk = !action.rapidFire || (GetTickCount64() / 90) % 2 == 0;
                     if (rapidOk)
-                        ApplyPaddleMapping(report, action.gamepadMapping);
+                        for (PaddleMapping m : action.gamepadMappings) ApplyPaddleMapping(report, m);
                 }
             }
         } else {
@@ -382,7 +382,7 @@ void ApplyAllButtonRemaps(XusbReport& report, const uint8_t* buf, size_t n,
                 if (action.type == PaddleActionType::Gamepad && pressed) {
                     const bool rapidOk = !action.rapidFire || (GetTickCount64() / 90) % 2 == 0;
                     if (rapidOk)
-                        ApplyPaddleMapping(report, action.gamepadMapping);
+                        for (PaddleMapping m : action.gamepadMappings) ApplyPaddleMapping(report, m);
                 }
                 // KeyChord / Macro / None: bit cleared; PaddleOverlay fires key events.
             }

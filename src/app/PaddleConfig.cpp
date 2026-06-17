@@ -238,11 +238,13 @@ PaddleAction ParseAction(const std::wstring& value) {
     PaddleAction action{};
 
     if (upperKind == L"GAMEPAD") {
-        PaddleMapping mapping = PaddleMapping::None;
-        if (TryParseGamepad(payload, mapping)) {
-            action.type = PaddleActionType::Gamepad;
-            action.gamepadMapping = mapping;
+        for (const std::wstring& token : Split(payload, L'+')) {
+            PaddleMapping mapping = PaddleMapping::None;
+            if (TryParseGamepad(token, mapping) && mapping != PaddleMapping::None)
+                action.gamepadMappings.push_back(mapping);
         }
+        if (!action.gamepadMappings.empty())
+            action.type = PaddleActionType::Gamepad;
     } else if (upperKind == L"KEY" || upperKind == L"MODIFIER") {
         action.type = PaddleActionType::KeyChord;
         action.chord = ParseChord(payload);
@@ -325,6 +327,16 @@ std::wstring DescribeGamepad(PaddleMapping mapping) {
     case PaddleMapping::DPadLeft: return L"D-Pad Left";
     }
     return L"Unmapped";
+}
+
+std::wstring DescribeGamepadMappings(const std::vector<PaddleMapping>& mappings) {
+    if (mappings.empty()) return L"Unmapped";
+    std::wstring result;
+    for (const PaddleMapping& m : mappings) {
+        if (!result.empty()) result += L"+";
+        result += DescribeGamepad(m);
+    }
+    return result;
 }
 
 PaddleMapping ParseGamepadMapping(const std::wstring& value, PaddleMapping fallback = PaddleMapping::None) {
@@ -533,7 +545,7 @@ void PaddleConfig::Save(const PaddleActionBindings& bindings) {
             value = L"none";
             break;
         case PaddleActionType::Gamepad:
-            value = L"gamepad:" + DescribeGamepad(action.gamepadMapping);
+            value = L"gamepad:" + DescribeGamepadMappings(action.gamepadMappings);
             break;
         case PaddleActionType::KeyChord:
             value = L"key:" + DescribeChord(action.chord);
@@ -589,7 +601,7 @@ std::wstring PaddleConfig::Describe(const PaddleAction& action, PaddleMapping fa
     case PaddleActionType::None:
         return L"Unmapped";
     case PaddleActionType::Gamepad:
-        return DescribeGamepad(action.gamepadMapping) +
+        return DescribeGamepadMappings(action.gamepadMappings) +
             (action.rapidFire ? L" [Rapid]" : L"");
     case PaddleActionType::KeyChord:
         return DescribeChord(action.chord) +
@@ -726,7 +738,7 @@ void PaddleConfig::SaveProfiles(const std::vector<RemapProfile>& profiles) {
             value = L"none";
             break;
         case PaddleActionType::Gamepad:
-            value = L"gamepad:" + DescribeGamepad(action.gamepadMapping);
+            value = L"gamepad:" + DescribeGamepadMappings(action.gamepadMappings);
             break;
         case PaddleActionType::KeyChord:
             value = L"key:" + DescribeChord(action.chord);

@@ -673,7 +673,7 @@ void PaddleConfigWindow::RefreshEditorForSelectedPaddle() {
     PaddleMapping gamepadTarget = (mapping ? *mapping : PaddleMapping::None);
 
     if (modeIndex == 0 && action && action->type == PaddleActionType::Gamepad) {
-        gamepadTarget = action->gamepadMapping;
+        gamepadTarget = action->gamepadMappings.empty() ? PaddleMapping::None : action->gamepadMappings[0];
     }
 
     SendMessageW(m_comboMode, CB_SETCURSEL, modeIndex, 0);
@@ -1402,7 +1402,7 @@ void PaddleConfigWindow::ApplySelection() {
             : PaddleMapping::None;
         if (mapping) *mapping = selected;
         action->type = PaddleActionType::Gamepad;
-        action->gamepadMapping = selected;
+        action->gamepadMappings = { selected };
         action->chord.clear();
         action->macroSteps.clear();
     } else if (modeIndex == 1) {

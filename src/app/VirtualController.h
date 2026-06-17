@@ -49,7 +49,7 @@ enum class PaddleActionType {
 
 struct PaddleAction {
     PaddleActionType type = PaddleActionType::UseMenuMapping;
-    PaddleMapping gamepadMapping = PaddleMapping::None;
+    std::vector<PaddleMapping> gamepadMappings;
     bool rapidFire = false;
     std::vector<uint16_t> chord;
     std::vector<std::vector<uint16_t>> macroSteps;

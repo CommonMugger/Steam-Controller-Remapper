@@ -420,7 +420,7 @@ static bool TryParseMappingToken(const std::wstring& token, PaddleMapping& mappi
         parsed.type != PaddleActionType::Gamepad) {
         return false;
     }
-    mapping = parsed.gamepadMapping;
+    mapping = parsed.gamepadMappings.empty() ? PaddleMapping::None : parsed.gamepadMappings[0];
     return true;
 }
 
@@ -447,7 +447,8 @@ static void AppendBindingJson(std::ostringstream& json,
                               const PaddleAction& action,
                               PaddleMapping fallback) {
     const PaddleMapping effectiveMapping =
-        action.type == PaddleActionType::Gamepad ? action.gamepadMapping : fallback;
+        action.type == PaddleActionType::Gamepad && !action.gamepadMappings.empty()
+            ? action.gamepadMappings[0] : fallback;
     json << "\"" << name << "\":{"
          << "\"display\":\"" << JsonEscape(PaddleConfig::Describe(action, fallback)) << "\","
          << "\"actionType\":\"" << ActionTypeToken(action.type) << "\","
@@ -1423,7 +1424,7 @@ std::string TrayApp::HandleIpcRequest(const std::string& request) {
 
         *fallback = mapping;
         action->type = mapping == PaddleMapping::None ? PaddleActionType::None : PaddleActionType::Gamepad;
-        action->gamepadMapping = mapping;
+        action->gamepadMappings = mapping == PaddleMapping::None ? std::vector<PaddleMapping>{} : std::vector<PaddleMapping>{ mapping };
         action->chord.clear();
         action->macroSteps.clear();
         action->rapidFire = false;
