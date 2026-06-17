@@ -33,13 +33,13 @@ static constexpr wchar_t REG_LAST_PROFILE[] = L"LastActiveProfileId";
 static constexpr wchar_t REG_MANUAL_OVERRIDE[] = L"ManualProfileOverride";
 static constexpr wchar_t REG_CONTROLLER_REPORT_SIGNATURE[] = L"ControllerReportSignature";
 static constexpr wchar_t UPDATE_URL[] = L"https://github.com/CommonMugger/Steam-Controller-Remapper/releases/latest";
-static constexpr wchar_t UPDATE_ASSET_NAME[] = L"SteamControllerRemapper-Installer.zip";
+static constexpr char UPDATE_ASSET_SUFFIX[] = "-Setup.exe";
 #define SCR_WIDEN2(x) L##x
 #define SCR_WIDEN(x) SCR_WIDEN2(x)
 #ifdef SCR_APP_VERSION
 static constexpr wchar_t APP_VERSION[] = SCR_WIDEN(SCR_APP_VERSION);
 #else
-static constexpr wchar_t APP_VERSION[] = L"1.7.0";
+static constexpr wchar_t APP_VERSION[] = L"1.7.1";
 #endif
 
 static bool HasRunEntry(const wchar_t* name) {
@@ -205,37 +205,37 @@ static std::string ExtractJsonStringField(const std::string& json, const char* f
     return value;
 }
 
-static std::string ExtractReleaseAssetDownloadUrl(const std::string& json, const std::string& assetNameUtf8) {
-    std::string nameNeedle = "\"name\":\"";
-    nameNeedle += assetNameUtf8;
-    nameNeedle += "\"";
-    const size_t namePos = json.find(nameNeedle);
-    if (namePos == std::string::npos)
-        return {};
-
-    const size_t urlPos = json.find("\"browser_download_url\":\"", namePos);
-    if (urlPos == std::string::npos)
-        return {};
-
-    const size_t valuePos = urlPos + std::strlen("\"browser_download_url\":\"");
-    std::string value;
-    bool escaping = false;
-    for (size_t i = valuePos; i < json.size(); ++i) {
-        const char ch = json[i];
-        if (escaping) {
-            value.push_back(ch);
-            escaping = false;
-            continue;
-        }
-        if (ch == '\\') {
-            escaping = true;
-            continue;
-        }
-        if (ch == '"')
+// Finds the download URL for the first release asset whose name ends with nameSuffix.
+static std::string ExtractReleaseAssetDownloadUrl(const std::string& json, const std::string& nameSuffix) {
+    size_t pos = 0;
+    while (pos < json.size()) {
+        const size_t namePos = json.find("\"name\":\"", pos);
+        if (namePos == std::string::npos)
             break;
-        value.push_back(ch);
+        const size_t valueStart = namePos + 8;
+        const size_t valueEnd = json.find('"', valueStart);
+        if (valueEnd == std::string::npos)
+            break;
+
+        const std::string name = json.substr(valueStart, valueEnd - valueStart);
+        if (name.size() >= nameSuffix.size() &&
+            name.compare(name.size() - nameSuffix.size(), nameSuffix.size(), nameSuffix) == 0) {
+            const size_t urlPos = json.find("\"browser_download_url\":\"", valueEnd);
+            if (urlPos == std::string::npos)
+                break;
+            const size_t uStart = urlPos + std::strlen("\"browser_download_url\":\"");
+            std::string url;
+            for (size_t i = uStart; i < json.size(); ++i) {
+                const char ch = json[i];
+                if (ch == '\\') { ++i; if (i < json.size()) url.push_back(json[i]); continue; }
+                if (ch == '"') break;
+                url.push_back(ch);
+            }
+            return url;
+        }
+        pos = valueEnd + 1;
     }
-    return value;
+    return {};
 }
 
 static bool EnsureDirectoryExists(const std::wstring& path) {
@@ -256,59 +256,6 @@ static bool DownloadFileToPath(const std::wstring& url, const std::wstring& dest
     return SUCCEEDED(hr);
 }
 
-static bool ExpandZipArchive(const std::wstring& zipPath, const std::wstring& destinationPath) {
-    if (!EnsureDirectoryExists(destinationPath))
-        return false;
-
-    std::wstring command = L"-NoProfile -ExecutionPolicy Bypass -Command \"Expand-Archive -LiteralPath '";
-    command += zipPath;
-    command += L"' -DestinationPath '";
-    command += destinationPath;
-    command += L"' -Force\"";
-
-    STARTUPINFOW si{};
-    si.cb = sizeof(si);
-    PROCESS_INFORMATION pi{};
-    std::wstring mutableCommand = command;
-    if (!CreateProcessW(L"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
-                        mutableCommand.data(),
-                        nullptr,
-                        nullptr,
-                        FALSE,
-                        CREATE_NO_WINDOW,
-                        nullptr,
-                        nullptr,
-                        &si,
-                        &pi)) {
-        return false;
-    }
-
-    WaitForSingleObject(pi.hProcess, INFINITE);
-    DWORD exitCode = 1;
-    GetExitCodeProcess(pi.hProcess, &exitCode);
-    CloseHandle(pi.hThread);
-    CloseHandle(pi.hProcess);
-    return exitCode == 0;
-}
-
-// Opens File Explorer with the downloaded installer selected so the user can
-// run it themselves. We intentionally do not auto-execute the installer: the
-// downloaded bundle carries Windows' Mark-of-the-Web, and launching it through
-// Explorer lets the user approve it via Windows' own trust prompt rather than
-// silently bypassing that protection.
-static bool RevealInstallerForUser(const std::wstring& bundleRoot) {
-    std::wstring installerCmd = bundleRoot;
-    if (!installerCmd.empty() && installerCmd.back() != L'\\')
-        installerCmd += L'\\';
-    installerCmd += L"Install-SteamControllerRemapper.cmd";
-    if (!std::filesystem::exists(installerCmd))
-        return false;
-
-    std::wstring selectArg = L"/select,\"" + installerCmd + L"\"";
-    const HINSTANCE result = ShellExecuteW(nullptr, L"open", L"explorer.exe",
-                                           selectArg.c_str(), nullptr, SW_SHOWNORMAL);
-    return reinterpret_cast<INT_PTR>(result) > 32;
-}
 
 static std::vector<int> ParseVersionParts(const std::wstring& version) {
     std::wstring cleaned = version;
@@ -1127,7 +1074,7 @@ void TrayApp::CheckForUpdates(bool userInitiated) {
         const std::wstring latestTag = WidenUtf8(ExtractJsonStringField(json, "tag_name"));
         const std::wstring latestUrl = WidenUtf8(ExtractJsonStringField(json, "html_url"));
         const std::wstring installerUrl = WidenUtf8(
-            ExtractReleaseAssetDownloadUrl(json, logging::Narrow(std::wstring(UPDATE_ASSET_NAME))));
+            ExtractReleaseAssetDownloadUrl(json, UPDATE_ASSET_SUFFIX));
         if (latestTag.empty()) {
             if (userInitiated) {
                 MessageBoxW(nullptr,
@@ -1151,23 +1098,23 @@ void TrayApp::CheckForUpdates(bool userInitiated) {
                     const DWORD pathLen = GetTempPathW(static_cast<DWORD>(tempRoot.size()), tempRoot.data());
                     if (pathLen > 0 && pathLen < tempRoot.size()) {
                         tempRoot.resize(pathLen);
-                        std::wstring updateRoot = tempRoot + L"SteamControllerRemapper-Updater";
-                        std::wstring zipPath = updateRoot + L"\\" + UPDATE_ASSET_NAME;
-                        std::wstring extractRoot = updateRoot + L"\\bundle";
+                        std::wstring updateDir = tempRoot + L"SteamControllerRemapper-Updater";
+                        std::wstring exePath   = updateDir + L"\\SteamControllerRemapper-Setup.exe";
 
                         std::error_code ec;
-                        std::filesystem::remove_all(updateRoot, ec);
-                        if (EnsureDirectoryExists(updateRoot) &&
-                            DownloadFileToPath(installerUrl, zipPath) &&
-                            ExpandZipArchive(zipPath, extractRoot) &&
-                            RevealInstallerForUser(extractRoot)) {
+                        std::filesystem::remove_all(updateDir, ec);
+                        if (EnsureDirectoryExists(updateDir) &&
+                            DownloadFileToPath(installerUrl, exePath)) {
                             revealedInstaller = true;
+                            // Open Explorer with the installer selected — lets Windows
+                            // show its MotW prompt when the user runs it themselves.
+                            std::wstring selectArg = L"/select,\"" + exePath + L"\"";
+                            ShellExecuteW(nullptr, L"open", L"explorer.exe",
+                                          selectArg.c_str(), nullptr, SW_SHOWNORMAL);
                             MessageBoxW(nullptr,
-                                        L"The update has been downloaded and opened in File Explorer.\n\n"
-                                        L"Run \"Install-SteamControllerRemapper.cmd\" to finish updating. "
-                                        L"Because it was downloaded from the internet, Windows may ask you "
-                                        L"to confirm before it runs — choose \"More info\" then "
-                                        L"\"Run anyway\" if prompted.",
+                                        L"The installer has been downloaded and selected in File Explorer.\n\n"
+                                        L"Double-click \"SteamControllerRemapper-Setup.exe\" to update. "
+                                        L"Windows may ask you to confirm — click \"Run anyway\" if prompted.",
                                         APP_NAME,
                                         MB_OK | MB_ICONINFORMATION);
                         }
