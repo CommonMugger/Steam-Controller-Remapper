@@ -253,7 +253,17 @@ PaddleAction ParseAction(const std::wstring& value) {
     } else if (upperKind == L"MACRO") {
         action.type = PaddleActionType::Macro;
         for (const std::wstring& step : Split(payload, L',')) {
-            std::vector<uint16_t> chord = ParseChord(step);
+            const std::wstring trimmedStep = Trim(step);
+            std::vector<uint16_t> chord;
+            if (Upper(trimmedStep).rfind(L"GAMEPAD:", 0) == 0) {
+                for (const std::wstring& token : Split(trimmedStep.substr(8), L'+')) {
+                    PaddleMapping m = PaddleMapping::None;
+                    if (TryParseGamepad(Trim(token), m))
+                        chord.push_back(0x8000u | static_cast<uint16_t>(static_cast<int>(m)));
+                }
+            } else {
+                chord = ParseChord(trimmedStep);
+            }
             if (!chord.empty())
                 action.macroSteps.push_back(std::move(chord));
         }
@@ -353,6 +363,45 @@ void WriteProfileSection(std::wofstream& out, const RemapProfile& profile) {
     out << L"R4Map=" << DescribeGamepad(profile.mappings.r4) << L"\n";
     out << L"R5Map=" << DescribeGamepad(profile.mappings.r5) << L"\n";
     out << L"QAMMap=" << DescribeGamepad(profile.mappings.qam) << L"\n";
+}
+
+std::wstring DescribeChord(const std::vector<uint16_t>& chord);
+
+static const wchar_t* GamepadMappingTokenName(PaddleMapping m) {
+    switch (m) {
+    case PaddleMapping::A:            return L"A";
+    case PaddleMapping::B:            return L"B";
+    case PaddleMapping::X:            return L"X";
+    case PaddleMapping::Y:            return L"Y";
+    case PaddleMapping::LeftShoulder: return L"LB";
+    case PaddleMapping::RightShoulder:return L"RB";
+    case PaddleMapping::View:         return L"VIEW";
+    case PaddleMapping::Menu:         return L"MENU";
+    case PaddleMapping::LeftThumb:    return L"L3";
+    case PaddleMapping::RightThumb:   return L"R3";
+    case PaddleMapping::Guide:        return L"GUIDE";
+    case PaddleMapping::DPadUp:       return L"DPADUP";
+    case PaddleMapping::DPadRight:    return L"DPADRIGHT";
+    case PaddleMapping::DPadDown:     return L"DPADDOWN";
+    case PaddleMapping::DPadLeft:     return L"DPADLEFT";
+    default:                          return L"NONE";
+    }
+}
+
+std::wstring SerializeMacroStep(const std::vector<uint16_t>& step) {
+    bool hasGamepad = false;
+    for (uint16_t v : step) if (v & 0x8000u) { hasGamepad = true; break; }
+    if (!hasGamepad)
+        return DescribeChord(step);
+    std::wstring result = L"gamepad:";
+    bool first = true;
+    for (uint16_t v : step) {
+        if (!(v & 0x8000u)) continue;
+        if (!first) result += L"+";
+        first = false;
+        result += GamepadMappingTokenName(static_cast<PaddleMapping>(v & 0x7FFFu));
+    }
+    return result;
 }
 
 std::wstring DescribeChord(const std::vector<uint16_t>& chord) {
@@ -557,7 +606,7 @@ void PaddleConfig::Save(const PaddleActionBindings& bindings) {
                 if (!first)
                     value += L", ";
                 first = false;
-                value += DescribeChord(step);
+                value += SerializeMacroStep(step);
             }
             break;
         }
@@ -613,7 +662,7 @@ std::wstring PaddleConfig::Describe(const PaddleAction& action, PaddleMapping fa
             if (!first)
                 text += L", ";
             first = false;
-            text += DescribeChord(step);
+            text += SerializeMacroStep(step);
         }
         if (action.rapidFire)
             text += L" [Rapid]";
@@ -750,7 +799,7 @@ void PaddleConfig::SaveProfiles(const std::vector<RemapProfile>& profiles) {
                 if (!first)
                     value += L", ";
                 first = false;
-                value += DescribeChord(step);
+                value += SerializeMacroStep(step);
             }
             break;
         }

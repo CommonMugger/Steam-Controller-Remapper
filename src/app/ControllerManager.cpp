@@ -151,6 +151,12 @@ void ControllerManager::EnableGameMode() {
             else      m_virtual->KeyChordUp(chord);
         }
     });
+    m_paddleOverlay.SetGamepadChordCallback([this](const std::vector<PaddleMapping>& mappings, bool down) {
+        if (m_virtual) {
+            if (down) m_virtual->GamepadMacroDown(mappings);
+            else      m_virtual->GamepadMacroUp(mappings);
+        }
+    });
     m_trackpad.SetFirmwareMouseEnabled(kEnableFirmwareTrackpadMouse && m_trackpadMouseEnabled);
     m_paddleOverlay.SetBindings(m_paddleActions);
     StartReadLoop();
@@ -280,6 +286,7 @@ void ControllerManager::Close(bool restoreLizard) {
     m_trackpad.SetHapticCallback({});
     m_trackpad.SetMouseUpdateCallback({});
     m_paddleOverlay.SetKeyChordCallback({});
+    m_paddleOverlay.SetGamepadChordCallback({});
     if (g_ctrl) {
         if (restoreLizard && m_gameModeActive)
             g_ctrl->EnableLizardMode();
@@ -310,6 +317,17 @@ void ControllerManager::ReadLoop() {
         if (!SteamController::IsStateLikeReport(buf, n)) continue;
         StandardGamepadState standardState;
         m_sdlInput.Poll(standardState);
+
+        // SDL never reports battery for the Steam Controller; read from raw HID instead.
+        // buf[44..45] is a 16-bit LE battery level where 0xFFFF = full charge.
+        if (buf[0] == SteamController::REPORT_STATE && n >= 46) {
+            uint16_t rawBattery = 0;
+            memcpy(&rawBattery, buf + 44, 2);
+            standardState.batteryPercent = rawBattery > 0
+                ? static_cast<int>(static_cast<uint32_t>(rawBattery) * 100u / 0xFFFFu)
+                : -1;
+        }
+
         {
             std::lock_guard<std::mutex> lock(m_lastReportMutex);
             m_lastReportSize = (std::min)(n, m_lastReport.size());

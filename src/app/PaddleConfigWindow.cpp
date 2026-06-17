@@ -397,109 +397,190 @@ LRESULT PaddleConfigWindow::HandleMessage(HWND hwnd, UINT msg, WPARAM wp, LPARAM
 }
 
 void PaddleConfigWindow::CreateControls() {
-    CreateWindowW(L"STATIC", L"Editing profile:", WS_CHILD | WS_VISIBLE,
-                  620, 18, 120, 20, m_hwnd, nullptr, m_hInstance, nullptr);
-    m_staticProfile = CreateWindowW(L"STATIC", L"", WS_CHILD | WS_VISIBLE,
-                                    740, 18, 150, 20, m_hwnd, nullptr, m_hInstance, nullptr);
-    CreateWindowW(L"STATIC", L"Installed game:", WS_CHILD | WS_VISIBLE,
-                  620, 42, 120, 20, m_hwnd, nullptr, m_hInstance, nullptr);
-    m_comboGameProfiles = CreateWindowW(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST,
-                                        620, 64, 140, 300, m_hwnd,
-                                        static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_PROFILE_CURRENT))),
-                                        m_hInstance, nullptr);
-    SendMessageW(m_comboGameProfiles, CB_SETDROPPEDWIDTH, 260, 0);
-    m_buttonRefreshLibrary = CreateWindowW(L"BUTTON", L"Refresh Library", WS_CHILD | WS_VISIBLE | WS_TABSTOP,
-                                           768, 64, 122, 24, m_hwnd, static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_LIBRARY_REFRESH))), m_hInstance, nullptr);
-    CreateWindowW(L"STATIC", L"Game sources:", WS_CHILD | WS_VISIBLE,
-                  620, 96, 120, 20, m_hwnd, nullptr, m_hInstance, nullptr);
-    m_listGameSources = CreateWindowW(L"LISTBOX", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | LBS_NOTIFY,
-                                      620, 118, 160, 84, m_hwnd,
-                                      static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_GAME_SOURCE_LIST))),
-                                      m_hInstance, nullptr);
-    m_buttonAddFolder = CreateWindowW(L"BUTTON", L"Add Folder...", WS_CHILD | WS_VISIBLE | WS_TABSTOP,
-                                      788, 118, 102, 24, m_hwnd,
-                                      static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_GAME_LOCATION))),
-                                      m_hInstance, nullptr);
-    m_buttonAddExe = CreateWindowW(L"BUTTON", L"Add EXE...", WS_CHILD | WS_VISIBLE | WS_TABSTOP,
-                                   788, 148, 102, 24, m_hwnd,
-                                   static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_GAME_SOURCE_EXE))),
-                                   m_hInstance, nullptr);
-    m_buttonRemoveSource = CreateWindowW(L"BUTTON", L"Remove", WS_CHILD | WS_VISIBLE | WS_TABSTOP,
-                                         788, 178, 102, 24, m_hwnd,
-                                         static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_GAME_SOURCE_REMOVE))),
-                                         m_hInstance, nullptr);
-    m_staticRefreshStatus = CreateWindowW(L"STATIC", L"", WS_CHILD | WS_VISIBLE,
-                                          620, 208, 160, 14, m_hwnd, nullptr, m_hInstance, nullptr);
-    m_progressRefresh = CreateWindowExW(0, PROGRESS_CLASSW, nullptr, WS_CHILD | WS_VISIBLE | PBS_MARQUEE,
-                                        620, 224, 160, 14, m_hwnd, nullptr, m_hInstance, nullptr);
-    ShowWindow(m_progressRefresh, SW_HIDE);
-    m_checkAutoSwitch = CreateWindowW(L"BUTTON", L"Auto-switch profiles when game launches",
-                                      WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX,
-                                      620, 248, 270, 22, m_hwnd,
-                                      static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_AUTO_SWITCH))),
-                                      m_hInstance, nullptr);
+    // Right panel geometry: x=[PX, PX+PW], y grows downward.
+    const int PX = 614, PW = 278, PXR = PX + PW;
+    const int LH = 14, CH = 24, BH = 26;
+    int y = 10;
 
-    CreateWindowW(L"STATIC", L"Button to edit:", WS_CHILD | WS_VISIBLE,
-                  620, 282, 120, 20, m_hwnd, nullptr, m_hInstance, nullptr);
-    m_comboPaddleSelect = CreateWindowW(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST,
-                                        620, 304, 240, 440, m_hwnd,
-                                        static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_PADDLE_CURRENT))),
-                                        m_hInstance, nullptr);
+    auto lbl = [&](const wchar_t* text, int x, int ly, int w) {
+        CreateWindowW(L"STATIC", text, WS_CHILD | WS_VISIBLE,
+            x, ly, w, LH, m_hwnd, nullptr, m_hInstance, nullptr);
+    };
+    auto rule = [&](int ly) {
+        CreateWindowW(L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_ETCHEDHORZ,
+            PX, ly, PW, 2, m_hwnd, nullptr, m_hInstance, nullptr);
+    };
+    auto section = [&](const wchar_t* text) {
+        lbl(text, PX, y, PW);
+        y += 16;
+        rule(y);
+        y += 10;
+    };
+
+    // ── GAME PROFILE ─────────────────────────────────────────────────────
+    section(L"GAME PROFILE");
+
+    lbl(L"Profile:", PX, y, 52);
+    m_staticProfile = CreateWindowW(L"STATIC", L"", WS_CHILD | WS_VISIBLE,
+        PX + 56, y, PW - 56, LH, m_hwnd, nullptr, m_hInstance, nullptr);
+    y += 22;
+
+    lbl(L"Installed game:", PX, y, PW);
+    y += 18;
+    m_comboGameProfiles = CreateWindowW(L"COMBOBOX", L"",
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST,
+        PX, y, 162, CH, m_hwnd,
+        static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_PROFILE_CURRENT))),
+        m_hInstance, nullptr);
+    SendMessageW(m_comboGameProfiles, CB_SETDROPPEDWIDTH, 260, 0);
+    m_buttonRefreshLibrary = CreateWindowW(L"BUTTON", L"Refresh",
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+        PX + 170, y, 108, CH, m_hwnd,
+        static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_LIBRARY_REFRESH))),
+        m_hInstance, nullptr);
+    y += CH + 10;
+
+    lbl(L"Game sources:", PX, y, PW);
+    y += 18;
+    m_listGameSources = CreateWindowW(L"LISTBOX", L"",
+        WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL | WS_HSCROLL |
+        LBS_NOTIFY | LBS_NOINTEGRALHEIGHT,
+        PX, y, 162, 90, m_hwnd,
+        static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_GAME_SOURCE_LIST))),
+        m_hInstance, nullptr);
+    m_buttonAddFolder = CreateWindowW(L"BUTTON", L"Add Folder...",
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+        PX + 170, y, 108, CH, m_hwnd,
+        static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_GAME_LOCATION))),
+        m_hInstance, nullptr);
+    m_buttonAddExe = CreateWindowW(L"BUTTON", L"Add EXE...",
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+        PX + 170, y + 30, 108, CH, m_hwnd,
+        static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_GAME_SOURCE_EXE))),
+        m_hInstance, nullptr);
+    m_buttonRemoveSource = CreateWindowW(L"BUTTON", L"Remove",
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+        PX + 170, y + 60, 108, CH, m_hwnd,
+        static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_GAME_SOURCE_REMOVE))),
+        m_hInstance, nullptr);
+    y += 90 + 8;
+
+    // Progress and status occupy the same row (only one visible at a time).
+    m_staticRefreshStatus = CreateWindowW(L"STATIC", L"", WS_CHILD | WS_VISIBLE,
+        PX, y, PW, 14, m_hwnd, nullptr, m_hInstance, nullptr);
+    m_progressRefresh = CreateWindowExW(0, PROGRESS_CLASSW, nullptr,
+        WS_CHILD | WS_VISIBLE | PBS_MARQUEE,
+        PX, y, PW, 14, m_hwnd, nullptr, m_hInstance, nullptr);
+    ShowWindow(m_progressRefresh, SW_HIDE);
+    y += 20;
+
+    m_checkAutoSwitch = CreateWindowW(L"BUTTON", L"Auto-switch profiles when game launches",
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX,
+        PX, y, PW, 20, m_hwnd,
+        static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_AUTO_SWITCH))),
+        m_hInstance, nullptr);
+    y += 20 + 16;
+
+    // ── BUTTON TO REMAP ───────────────────────────────────────────────────
+    section(L"BUTTON TO REMAP");
+
+    lbl(L"Button:", PX, y, 52);
+    m_staticSelected = CreateWindowW(L"STATIC", L"", WS_CHILD | WS_VISIBLE,
+        PX + 56, y, PW - 56, LH, m_hwnd,
+        static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_SELECTED))),
+        m_hInstance, nullptr);
+    y += 18;
+    m_comboPaddleSelect = CreateWindowW(L"COMBOBOX", L"",
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST,
+        PX, y, PW, 440, m_hwnd,
+        static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_PADDLE_CURRENT))),
+        m_hInstance, nullptr);
     for (int i = 0; i < kTotalButtonCount; ++i)
         SendMessageW(m_comboPaddleSelect, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(PaddleName(i)));
-    CreateWindowW(L"STATIC", L"Current binding:", WS_CHILD | WS_VISIBLE,
-                  620, 336, 120, 20, m_hwnd, nullptr, m_hInstance, nullptr);
-    m_staticBindingSummary = CreateWindowW(L"STATIC", L"", WS_CHILD | WS_VISIBLE,
-                                           620, 356, 260, 28, m_hwnd, nullptr, m_hInstance, nullptr);
-    m_staticSelected = CreateWindowW(L"STATIC", L"", WS_CHILD | WS_VISIBLE,
-                                     740, 282, 150, 20, m_hwnd, static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_SELECTED))), m_hInstance, nullptr);
+    y += CH + 10;
 
-    CreateWindowW(L"STATIC", L"Action type:", WS_CHILD | WS_VISIBLE,
-                  620, 394, 120, 20, m_hwnd, nullptr, m_hInstance, nullptr);
-    m_comboMode = CreateWindowW(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST,
-                                620, 416, 240, 220, m_hwnd, static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_MODE))), m_hInstance, nullptr);
+    lbl(L"Current binding:", PX, y, PW);
+    y += 18;
+    m_staticBindingSummary = CreateWindowW(L"STATIC", L"", WS_CHILD | WS_VISIBLE,
+        PX, y, PW, 28, m_hwnd, nullptr, m_hInstance, nullptr);
+    y += 28 + 16;
+
+    // ── ACTION ────────────────────────────────────────────────────────────
+    section(L"ACTION");
+
+    lbl(L"Action type:", PX, y, PW);
+    y += 18;
+    m_comboMode = CreateWindowW(L"COMBOBOX", L"",
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST,
+        PX, y, PW, 220, m_hwnd,
+        static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_MODE))),
+        m_hInstance, nullptr);
     SendMessageW(m_comboMode, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Gamepad button"));
     SendMessageW(m_comboMode, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Shortcut / macro"));
     SendMessageW(m_comboMode, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Unmapped"));
+    y += CH + 10;
 
-    CreateWindowW(L"STATIC", L"Gamepad target:", WS_CHILD | WS_VISIBLE,
-                  620, 448, 120, 20, m_hwnd, nullptr, m_hInstance, nullptr);
-    m_comboGamepad = CreateWindowW(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST,
-                                   620, 470, 240, 300, m_hwnd, static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_GAMEPAD))), m_hInstance, nullptr);
+    // "Target button:" label and "Rapid fire" checkbox share the same row.
+    lbl(L"Target button:", PX, y, 110);
+    m_checkRapid = CreateWindowW(L"BUTTON", L"Rapid fire",
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX,
+        PX + 118, y, PW - 118, 20, m_hwnd,
+        static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_RAPID))),
+        m_hInstance, nullptr);
+    y += 18;
+    m_comboGamepad = CreateWindowW(L"COMBOBOX", L"",
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST,
+        PX, y, PW, 300, m_hwnd,
+        static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_GAMEPAD))),
+        m_hInstance, nullptr);
     for (const PaddleMapping mapping : kGamepadOptions)
         SendMessageW(m_comboGamepad, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(GamepadName(mapping)));
+    y += CH + 10;
 
-    m_staticBinding = CreateWindowW(L"STATIC", L"Binding:", WS_CHILD | WS_VISIBLE,
-                                    620, 532, 160, 20, m_hwnd, nullptr, m_hInstance, nullptr);
-    m_editBinding = CreateWindowW(L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_BORDER | ES_AUTOHSCROLL,
-                                  620, 554, 240, 24, m_hwnd, static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_BINDING))), m_hInstance, nullptr);
-    m_staticBindingHelp = CreateWindowW(L"STATIC", L"", WS_CHILD | WS_VISIBLE,
-                                        620, 582, 240, 52, m_hwnd, nullptr, m_hInstance, nullptr);
+    m_staticBinding = CreateWindowW(L"STATIC", L"Shortcut or macro:", WS_CHILD | WS_VISIBLE,
+        PX, y, PW, LH, m_hwnd, nullptr, m_hInstance, nullptr);
+    y += 18;
+    m_editBinding = CreateWindowW(L"EDIT", L"",
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_BORDER | ES_AUTOHSCROLL,
+        PX, y, PW, CH, m_hwnd,
+        static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_BINDING))),
+        m_hInstance, nullptr);
+    y += CH + 8;
+    m_staticBindingHelp = nullptr;
+    m_buttonRecord = CreateWindowW(L"BUTTON", L"Open Macro Editor...",
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+        PX, y, PW, BH, m_hwnd,
+        static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_RECORD))),
+        m_hInstance, nullptr);
+    y += BH + 10;
 
-    m_checkRapid = CreateWindowW(L"BUTTON", L"Rapid fire", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX,
-                                 620, 502, 160, 22, m_hwnd, static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_RAPID))), m_hInstance, nullptr);
-    m_buttonRecord = CreateWindowW(L"BUTTON", L"Capture Input...", WS_CHILD | WS_VISIBLE | WS_TABSTOP,
-                                   620, 644, 240, 28, m_hwnd, static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_RECORD))), m_hInstance, nullptr);
-    CreateWindowW(L"BUTTON", L"Close", WS_CHILD | WS_VISIBLE | WS_TABSTOP,
-                  620, 680, 240, 30, m_hwnd, static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_CLOSE))), m_hInstance, nullptr);
+    // ── Bottom ────────────────────────────────────────────────────────────
+    rule(y);
+    y += 10;
+    CreateWindowW(L"BUTTON", L"Close",
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+        PXR - 104, y, 104, 28, m_hwnd,
+        static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_CLOSE))),
+        m_hInstance, nullptr);
 
+    // ── Non-layout (popup/tooltip) ────────────────────────────────────────
     m_hoverLabelPopup = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW, L"STATIC", L"",
-                                        WS_POPUP | WS_BORDER | SS_LEFT,
-                                        0, 0, 0, 0, m_hwnd, nullptr, m_hInstance, nullptr);
+        WS_POPUP | WS_BORDER | SS_LEFT,
+        0, 0, 0, 0, m_hwnd, nullptr, m_hInstance, nullptr);
     SendMessageW(m_hoverLabelPopup, WM_SETFONT,
-                 reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
+        reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
     ShowWindow(m_hoverLabelPopup, SW_HIDE);
 
     INITCOMMONCONTROLSEX icc{ sizeof(icc), ICC_WIN95_CLASSES };
     InitCommonControlsEx(&icc);
     m_tooltip = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASSW, nullptr,
-                                WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX,
-                                CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
-                                m_hwnd, nullptr, m_hInstance, nullptr);
+        WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX,
+        CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+        m_hwnd, nullptr, m_hInstance, nullptr);
     SendMessageW(m_tooltip, TTM_SETMAXTIPWIDTH, 0, 640);
     SendMessageW(m_tooltip, TTM_SETDELAYTIME, TTDT_INITIAL, 0);
     SetWindowPos(m_tooltip, HWND_TOPMOST, 0, 0, 0, 0,
-                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
 
     TOOLINFOW ti{};
     ti.cbSize = sizeof(ti);
@@ -508,7 +589,6 @@ void PaddleConfigWindow::CreateControls() {
     ti.uId = TOOLTIP_BASE_ID;
     ti.lpszText = const_cast<wchar_t*>(L"");
     SendMessageW(m_tooltip, TTM_ADDTOOLW, 0, reinterpret_cast<LPARAM>(&ti));
-
 }
 
 void PaddleConfigWindow::RefreshFromModel() {
@@ -559,10 +639,17 @@ void PaddleConfigWindow::RefreshBindingSummary() {
 
 void PaddleConfigWindow::RefreshGameSourcesUi() {
     SendMessageW(m_listGameSources, LB_RESETCONTENT, 0, 0);
+    int maxWidth = 0;
+    HDC hdc = GetDC(m_listGameSources);
     for (const std::wstring& spec : m_gameSourceSpecs) {
         const std::wstring display = GameSourceDisplayText(spec);
         SendMessageW(m_listGameSources, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(display.c_str()));
+        SIZE sz{};
+        GetTextExtentPoint32W(hdc, display.c_str(), static_cast<int>(display.size()), &sz);
+        if (sz.cx > maxWidth) maxWidth = sz.cx;
     }
+    ReleaseDC(m_listGameSources, hdc);
+    SendMessageW(m_listGameSources, LB_SETHORIZONTALEXTENT, maxWidth + 8, 0);
     if (!m_gameSourceSpecs.empty())
         SendMessageW(m_listGameSources, LB_SETCURSEL, 0, 0);
     EnableWindow(m_buttonRemoveSource, !m_gameSourceSpecs.empty());
@@ -737,14 +824,8 @@ void PaddleConfigWindow::UpdateControlState() {
     const bool noneMode = (modeIndex == 2 || modeIndex == 3); // Unmapped or Passthrough
     EnableWindow(m_comboGamepad, gamepadMode);
     EnableWindow(m_editBinding, textMode);
-    SetWindowTextW(m_staticBinding, textMode ? L"Shortcut or macro:" : L"Binding:");
     ShowWindow(m_staticBinding, textMode ? SW_SHOW : SW_HIDE);
     ShowWindow(m_editBinding, textMode ? SW_SHOW : SW_HIDE);
-    SetWindowTextW(m_staticBindingHelp,
-                   textMode
-                       ? L"Controller: use Capture Input...\r\nShortcut: CTRL+SHIFT+M\r\nMacro: WIN+TAB, ALT+ENTER\r\nNumpad: NUM0-NUM9, NUMMUL, NUMADD...\r\nMedia: MEDIA_PLAY, VOL_UP, VOL_MUTE\r\nPunct: SEMICOLON, TILDE, LBRACKET...\r\nAny key: VK_NNN (e.g. VK_191)"
-                       : L"");
-    ShowWindow(m_staticBindingHelp, textMode ? SW_SHOW : SW_HIDE);
     EnableWindow(m_checkRapid, !noneMode);
     EnableWindow(m_buttonRecord, textMode);
     ShowWindow(m_buttonRecord, textMode ? SW_SHOW : SW_HIDE);
@@ -1302,7 +1383,9 @@ void PaddleConfigWindow::RecordMacro() {
     if (!MacroRecorder::Record(m_hwnd, macroText, buffer, m_controllerChordFn, m_controllerUiStateFn))
         return;
 
-    SetWindowTextW(m_editBinding, macroText.c_str());
+    // Prefix "macro:" so ApplySelection always parses it as a macro, not a key binding.
+    // This ensures single-step macros (no comma) are still treated as timed sequences.
+    SetWindowTextW(m_editBinding, (L"macro:" + macroText).c_str());
     SetModeSelectionForCurrent(1);
     ApplySelection();
 }
@@ -1416,8 +1499,14 @@ void PaddleConfigWindow::ApplySelection() {
             InvalidatePreviewArea();
             return;
         }
-        const bool isMacro = raw.find(L',') != std::wstring::npos;
-        std::wstring prefixed = (isMacro ? L"macro:" : L"key:") + raw;
+        std::wstring prefixed;
+        if (_wcsnicmp(raw.c_str(), L"macro:", 6) == 0 || _wcsnicmp(raw.c_str(), L"key:", 4) == 0) {
+            prefixed = raw;  // already has prefix (written by RecordMacro)
+        } else {
+            const bool isMacro = raw.find(L',') != std::wstring::npos
+                || _wcsnicmp(raw.c_str(), L"gamepad:", 8) == 0;
+            prefixed = (isMacro ? L"macro:" : L"key:") + raw;
+        }
         PaddleAction parsed{};
         if (PaddleConfig::ParseActionString(prefixed, parsed)) {
             *action = std::move(parsed);
@@ -1463,7 +1552,7 @@ RECT PaddleConfigWindow::PaddleRect(int paddleIndex) const {
     case 12: return RECT{308, 177, 365, 195};   // Menu
     case 13: return RECT{258, 200, 320, 218};   // Guide
     // Stick clicks
-    case 14: return RECT{160, 194, 222, 212};   // L3
+    case 14: return RECT{172, 194, 234, 212};   // L3 — starts past D-Pad Down's right edge (x=170)
     case 15: return RECT{346, 194, 408, 212};   // R3
     // D-pad
     case 16: return RECT{106, 127, 170, 145};   // DPad Up

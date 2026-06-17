@@ -303,7 +303,7 @@ namespace SteamControllerRemapperWidget
                 string detectedProfileId = stateObject.GetNamedString("detectedProfileId", string.Empty);
                 bool autoSwitch = stateObject.GetNamedBoolean("autoSwitchProfiles", false);
                 int batteryPercent = (int)stateObject.GetNamedNumber("batteryPercent", -1);
-                BatteryTextBlock.Text = batteryPercent >= 0 ? $"Battery: {batteryPercent}%" : string.Empty;
+                BatteryTextBlock.Text = batteryPercent >= 0 ? $"Battery: {batteryPercent}%" : "Battery: --";
 
                 ProfilesComboBox.Items.Clear();
                 ProfilesComboBox.Items.Add("default");

@@ -133,14 +133,28 @@ void SendChordUp(const std::vector<uint16_t>& chord) {
         SendKeyEvent(*it, KEYEVENTF_KEYUP);
 }
 
-using KeyChordCb = std::function<void(const std::vector<uint16_t>&, bool)>;
+using KeyChordCb     = std::function<void(const std::vector<uint16_t>&, bool)>;
+using GamepadChordCb = std::function<void(const std::vector<PaddleMapping>&, bool)>;
 
-void RunMacro(std::vector<std::vector<uint16_t>> steps, KeyChordCb cb) {
-    std::thread([steps = std::move(steps), cb = std::move(cb)]() {
+static bool IsGamepadEncoded(uint16_t v) { return (v & 0x8000u) != 0; }
+static PaddleMapping DecodeGamepadMapping(uint16_t v) {
+    return static_cast<PaddleMapping>(static_cast<int>(v & 0x7FFFu));
+}
+
+void RunMacro(std::vector<std::vector<uint16_t>> steps, KeyChordCb keyCb, GamepadChordCb gpCb) {
+    std::thread([steps = std::move(steps), keyCb, gpCb]() {
         for (const auto& chord : steps) {
-            if (cb) cb(chord, true); else SendChordDown(chord);
+            std::vector<uint16_t> keyPart;
+            std::vector<PaddleMapping> gpPart;
+            for (uint16_t v : chord) {
+                if (IsGamepadEncoded(v)) gpPart.push_back(DecodeGamepadMapping(v));
+                else keyPart.push_back(v);
+            }
+            if (!keyPart.empty()) { if (keyCb) keyCb(keyPart, true); else SendChordDown(keyPart); }
+            if (!gpPart.empty() && gpCb) gpCb(gpPart, true);
             Sleep(20);
-            if (cb) cb(chord, false); else SendChordUp(chord);
+            if (!keyPart.empty()) { if (keyCb) keyCb(keyPart, false); else SendChordUp(keyPart); }
+            if (!gpPart.empty() && gpCb) gpCb(gpPart, false);
             Sleep(30);
         }
     }).detach();
@@ -215,7 +229,7 @@ void PaddleOverlay::Update(const uint8_t* buf, size_t n, const StandardGamepadSt
             } else if (action.type == PaddleActionType::Macro) {
                 if (rising || rapidReady) {
                     logging::Logf("[PaddleOverlay] Fire btn=%S action=%s rapid=%d", ButtonName(i), ActionTypeName(action.type), action.rapidFire ? 1 : 0);
-                    RunMacro(action.macroSteps, m_keyChordCallback);
+                    RunMacro(action.macroSteps, m_keyChordCallback, m_gamepadChordCallback);
                     m_lastFireTickMs[i] = now;
                 }
             }

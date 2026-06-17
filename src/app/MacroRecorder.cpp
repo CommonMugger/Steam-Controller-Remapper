@@ -13,7 +13,7 @@ constexpr int IDC_HINT = 3003;
 constexpr int IDC_EDIT_STEP = 3004;
 constexpr int IDC_DELETE_STEP = 3005;
 constexpr int IDC_CLEAR_ALL = 3006;
-constexpr int IDC_CAPTURE = 3007;
+constexpr int IDC_GAMEPAD_STEP = 3007;
 constexpr int IDC_SAVE = 3008;
 constexpr int IDC_CANCEL = 3009;
 constexpr int IDC_STATUS = 3010;
@@ -79,21 +79,16 @@ struct RecorderState {
     HWND hwnd = nullptr;
     HWND list = nullptr;
     HWND status = nullptr;
-    HWND captureButton = nullptr;
+    HWND gamepadStepButton = nullptr;
     HWND saveButton = nullptr;
     HWND cancelButton = nullptr;
     bool accepted = false;
     std::set<UINT> held;
     std::vector<std::wstring> steps;
     std::wstring result;
-    MacroRecorder::ControllerChordFn controllerChordFn;
     MacroRecorder::ControllerUiStateFn controllerUiStateFn;
     MacroRecorder::ControllerUiState lastControllerUiState{};
-    std::wstring lastControllerChord;
     int appendIndex = -1;
-    bool captureArmed = false;
-    bool captureToSelected = false;
-    bool waitingForChordRelease = false;
     int focusIndex = 0;
 };
 
@@ -101,7 +96,7 @@ RecorderState* g_activeRecorder = nullptr;
 HHOOK g_keyboardHook = nullptr;
 HWND g_recorderWindow = nullptr;
 
-void ArmControllerCapture(RecorderState* state, bool appendToSelected);
+std::wstring ShowGamepadPicker(HWND owner);
 
 std::vector<std::wstring> SplitChordTokens(const std::wstring& text) {
     std::vector<std::wstring> tokens;
@@ -244,18 +239,18 @@ void BeginEditSelectedStep(RecorderState* state) {
     const int index = static_cast<int>(SendMessageW(state->list, LB_GETCURSEL, 0, 0));
     if (index == LB_ERR || index >= static_cast<int>(state->steps.size()))
         return;
-
-    ArmControllerCapture(state, true);
+    state->appendIndex = index;
+    RenderList(state);
+    SendMessageW(state->list, LB_SETCURSEL, static_cast<WPARAM>(index), 0);
+    SetStatus(state, L"Append mode: press a key or click Gamepad Step to add to this step.");
 }
 
 void ClearAllSteps(RecorderState* state) {
     state->held.clear();
     state->appendIndex = -1;
-    state->captureArmed = false;
-    state->captureToSelected = false;
     state->steps.clear();
     RenderList(state);
-    SetStatus(state, L"No steps. Use Capture Step to add one.");
+    SetStatus(state, L"No steps. Press keys or click Gamepad Step to add one.");
 }
 
 void RefreshRecorderFocus(RecorderState* state) {
@@ -263,7 +258,7 @@ void RefreshRecorderFocus(RecorderState* state) {
         return;
     const HWND order[] = {
         state->list,
-        state->captureButton,
+        state->gamepadStepButton,
         GetDlgItem(state->hwnd, IDC_EDIT_STEP),
         GetDlgItem(state->hwnd, IDC_DELETE_STEP),
         GetDlgItem(state->hwnd, IDC_CLEAR_ALL),
@@ -285,7 +280,7 @@ bool FocusRecorderControl(RecorderState* state, HWND target) {
         return false;
     const HWND order[] = {
         state->list,
-        state->captureButton,
+        state->gamepadStepButton,
         GetDlgItem(state->hwnd, IDC_EDIT_STEP),
         GetDlgItem(state->hwnd, IDC_DELETE_STEP),
         GetDlgItem(state->hwnd, IDC_CLEAR_ALL),
@@ -307,7 +302,7 @@ void MoveRecorderFocus(RecorderState* state, int delta) {
         return;
     const HWND order[] = {
         state->list,
-        state->captureButton,
+        state->gamepadStepButton,
         GetDlgItem(state->hwnd, IDC_EDIT_STEP),
         GetDlgItem(state->hwnd, IDC_DELETE_STEP),
         GetDlgItem(state->hwnd, IDC_CLEAR_ALL),
@@ -345,26 +340,179 @@ void SelectListDelta(RecorderState* state, int delta) {
     SetStatus(state, L"Selected: " + state->steps[selected]);
 }
 
-void ArmControllerCapture(RecorderState* state, bool appendToSelected) {
-    if (!state)
-        return;
-    state->captureArmed = true;
-    state->captureToSelected = appendToSelected;
-    state->waitingForChordRelease = true;
-    state->held.clear();
-    if (appendToSelected) {
-        const int index = static_cast<int>(SendMessageW(state->list, LB_GETCURSEL, 0, 0));
-        if (index >= 0 && index < static_cast<int>(state->steps.size())) {
-            state->appendIndex = index;
-            RenderList(state);
-            SendMessageW(state->list, LB_SETCURSEL, index, 0);
-            SetStatus(state, L"Capture armed. Release buttons, then press the chord to append.");
-            return;
+struct GamepadPickerState {
+    HWND hwnd = nullptr;
+    bool accepted = false;
+    bool checked[15] = {};
+};
+
+static constexpr struct { const wchar_t* label; const wchar_t* token; } kPickerButtons[15] = {
+    { L"A",          L"A"         },
+    { L"B",          L"B"         },
+    { L"X",          L"X"         },
+    { L"Y",          L"Y"         },
+    { L"LB",         L"LB"        },
+    { L"RB",         L"RB"        },
+    { L"L3",         L"L3"        },
+    { L"R3",         L"R3"        },
+    { L"Menu",       L"MENU"      },
+    { L"View",       L"VIEW"      },
+    { L"Guide",      L"GUIDE"     },
+    { L"Up",    L"DPADUP"    },
+    { L"Right", L"DPADRIGHT" },
+    { L"Down",  L"DPADDOWN"  },
+    { L"Left",  L"DPADLEFT"  },
+};
+
+LRESULT CALLBACK GamepadPickerProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    GamepadPickerState* state = reinterpret_cast<GamepadPickerState*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+    if (msg == WM_NCCREATE) {
+        auto* create = reinterpret_cast<CREATESTRUCTW*>(lp);
+        state = reinterpret_cast<GamepadPickerState*>(create->lpCreateParams);
+        state->hwnd = hwnd;
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(state));
+    }
+    if (!state) return DefWindowProcW(hwnd, msg, wp, lp);
+
+    switch (msg) {
+    case WM_CREATE: {
+        // Layout: left column = category label (70px), right = checkboxes (66px each, 70px step)
+        const int LX = 8, CX = 76, CS = 70, CW = 66, CH = 22, RH = 30, M = 8;
+        auto lbl = [&](const wchar_t* text, int y) {
+            CreateWindowW(L"STATIC", text, WS_CHILD | WS_VISIBLE | SS_RIGHT | SS_CENTERIMAGE,
+                LX, y, CX - LX - 4, CH, hwnd, nullptr, nullptr, nullptr);
+        };
+        auto cb = [&](int id, int col, int y) {
+            CreateWindowW(L"BUTTON", kPickerButtons[id].label,
+                WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX,
+                CX + col * CS, y, CW, CH,
+                hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(1000 + id)), nullptr, nullptr);
+        };
+
+        // Row 0 – Face buttons: A, B, X, Y (indices 0-3)
+        lbl(L"Face:", M);
+        cb(0, 0, M); cb(1, 1, M); cb(2, 2, M); cb(3, 3, M);
+
+        // Row 1 – Shoulders: LB, RB  (indices 4-5)
+        lbl(L"Shoulder:", M + RH);
+        cb(4, 0, M + RH); cb(5, 1, M + RH);
+
+        // Row 2 – Stick clicks: L3, R3  (indices 6-7)
+        lbl(L"Stick:", M + RH * 2);
+        cb(6, 0, M + RH * 2); cb(7, 1, M + RH * 2);
+
+        // Row 3 – Navigation: Menu, View, Guide  (indices 8-10)
+        lbl(L"Nav:", M + RH * 3);
+        cb(8, 0, M + RH * 3); cb(9, 1, M + RH * 3); cb(10, 2, M + RH * 3);
+
+        // Row 4 – D-Pad: Up, Right, Down, Left  (indices 11-14)
+        lbl(L"D-Pad:", M + RH * 4);
+        cb(11, 0, M + RH * 4); cb(12, 1, M + RH * 4); cb(13, 2, M + RH * 4); cb(14, 3, M + RH * 4);
+
+        // Separator
+        CreateWindowW(L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_ETCHEDHORZ,
+            M, M + RH * 5 + 4, 360, 2, hwnd, nullptr, nullptr, nullptr);
+
+        // Selection preview label
+        CreateWindowW(L"STATIC", L"Selection: (none)",
+            WS_CHILD | WS_VISIBLE,
+            M, M + RH * 5 + 12, 360, 18, hwnd,
+            reinterpret_cast<HMENU>(static_cast<INT_PTR>(1100)), nullptr, nullptr);
+
+        // Add Step / Cancel
+        CreateWindowW(L"BUTTON", L"Add Step",
+            WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_DEFPUSHBUTTON,
+            M, M + RH * 5 + 36, 90, 26, hwnd,
+            reinterpret_cast<HMENU>(IDOK), nullptr, nullptr);
+        CreateWindowW(L"BUTTON", L"Cancel",
+            WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+            M + 98, M + RH * 5 + 36, 80, 26, hwnd,
+            reinterpret_cast<HMENU>(IDCANCEL), nullptr, nullptr);
+        return 0;
+    }
+    case WM_COMMAND:
+        // Checkbox toggled — update selection preview
+        if (LOWORD(wp) >= 1000 && LOWORD(wp) < 1015 && HIWORD(wp) == BN_CLICKED) {
+            std::wstring sel;
+            for (int i = 0; i < 15; ++i) {
+                if (SendMessageW(GetDlgItem(hwnd, 1000 + i), BM_GETCHECK, 0, 0) == BST_CHECKED) {
+                    if (!sel.empty()) sel += L"+";
+                    sel += kPickerButtons[i].label;
+                }
+            }
+            SetWindowTextW(GetDlgItem(hwnd, 1100),
+                (L"Selection: " + (sel.empty() ? L"(none)" : sel)).c_str());
+        }
+        if (LOWORD(wp) == IDOK) {
+            for (int i = 0; i < 15; ++i) {
+                HWND cb = GetDlgItem(hwnd, 1000 + i);
+                state->checked[i] = (SendMessageW(cb, BM_GETCHECK, 0, 0) == BST_CHECKED);
+            }
+            state->accepted = true;
+            DestroyWindow(hwnd);
+            return 0;
+        }
+        if (LOWORD(wp) == IDCANCEL) {
+            state->accepted = false;
+            DestroyWindow(hwnd);
+            return 0;
+        }
+        break;
+    case WM_CLOSE:
+        state->accepted = false;
+        DestroyWindow(hwnd);
+        return 0;
+    }
+    return DefWindowProcW(hwnd, msg, wp, lp);
+}
+
+std::wstring ShowGamepadPicker(HWND owner) {
+    constexpr wchar_t kPickerClass[] = L"SteamControllerRemapperGamepadPicker";
+    WNDCLASSW wc{};
+    wc.lpfnWndProc = GamepadPickerProc;
+    wc.hInstance = reinterpret_cast<HINSTANCE>(GetWindowLongPtrW(owner, GWLP_HINSTANCE));
+    wc.lpszClassName = kPickerClass;
+    wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
+    wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
+    RegisterClassW(&wc);
+
+    GamepadPickerState state{};
+    HWND hwnd = CreateWindowExW(
+        WS_EX_DLGMODALFRAME | WS_EX_TOPMOST,
+        kPickerClass, L"Add Gamepad Step",
+        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
+        CW_USEDEFAULT, CW_USEDEFAULT, 380, 268,
+        owner, nullptr, wc.hInstance, &state);
+    if (!hwnd) return {};
+
+    if (owner && IsWindow(owner)) EnableWindow(owner, FALSE);
+    ShowWindow(hwnd, SW_SHOWNORMAL);
+    UpdateWindow(hwnd);
+    SetForegroundWindow(hwnd);
+
+    MSG msg;
+    while (IsWindow(hwnd) && GetMessageW(&msg, nullptr, 0, 0) > 0) {
+        if (!IsDialogMessageW(hwnd, &msg)) {
+            TranslateMessage(&msg);
+            DispatchMessageW(&msg);
         }
     }
-    state->appendIndex = -1;
-    RenderList(state);
-    SetStatus(state, L"Capture armed. Release buttons, then press the chord to add a step.");
+
+    if (owner && IsWindow(owner)) {
+        EnableWindow(owner, TRUE);
+        SetActiveWindow(owner);
+        SetForegroundWindow(owner);
+    }
+
+    if (!state.accepted) return {};
+
+    std::wstring chord;
+    for (int i = 0; i < 15; ++i) {
+        if (!state.checked[i]) continue;
+        if (!chord.empty()) chord += L"+";
+        chord += kPickerButtons[i].token;
+    }
+    return chord;
 }
 
 void BackspaceAction(RecorderState* state) {
@@ -451,37 +599,79 @@ LRESULT CALLBACK RecorderProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         return DefWindowProcW(hwnd, msg, wp, lp);
 
     switch (msg) {
-    case WM_CREATE:
-        state->list = CreateWindowW(L"LISTBOX", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | LBS_NOTIFY | WS_VSCROLL | WS_HSCROLL,
-                                    16, 16, 436, 196, hwnd, static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_LIST))), nullptr, nullptr);
-        state->captureButton = CreateWindowW(L"BUTTON", L"Capture Step", WS_CHILD | WS_VISIBLE | WS_TABSTOP,
-                                             16, 224, 132, 30, hwnd, static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_CAPTURE))), nullptr, nullptr);
-        CreateWindowW(L"BUTTON", L"Append Selected", WS_CHILD | WS_VISIBLE | WS_TABSTOP,
-                      160, 224, 132, 30, hwnd, static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_EDIT_STEP))), nullptr, nullptr);
-        CreateWindowW(L"BUTTON", L"Delete Step", WS_CHILD | WS_VISIBLE | WS_TABSTOP,
-                      304, 224, 148, 30, hwnd, static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_DELETE_STEP))), nullptr, nullptr);
-        CreateWindowW(L"BUTTON", L"Clear All", WS_CHILD | WS_VISIBLE | WS_TABSTOP,
-                      16, 262, 132, 30, hwnd, static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_CLEAR_ALL))), nullptr, nullptr);
-        state->saveButton = CreateWindowW(L"BUTTON", L"Save", WS_CHILD | WS_VISIBLE | WS_TABSTOP,
-                                          160, 262, 132, 30, hwnd, static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_SAVE))), nullptr, nullptr);
-        state->cancelButton = CreateWindowW(L"BUTTON", L"Cancel", WS_CHILD | WS_VISIBLE | WS_TABSTOP,
-                                            304, 262, 148, 30, hwnd, static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_CANCEL))), nullptr, nullptr);
-        state->status = CreateWindowW(L"STATIC", L"", WS_CHILD | WS_VISIBLE,
-                                      16, 304, 436, 36, hwnd, static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_STATUS))), nullptr, nullptr);
+    case WM_CREATE: {
+        // Layout constants. Content spans x=[M, M+CW], y grows downward.
+        const int M = 12, CW = 516, BH = 26, GAP = 8;
+
+        // ── Section: Step list ────────────────────────────────────────────
+        CreateWindowW(L"STATIC", L"Steps:", WS_CHILD | WS_VISIBLE,
+            M, 10, CW, 16, hwnd, nullptr, nullptr, nullptr);
+        state->list = CreateWindowW(L"LISTBOX", L"",
+            WS_CHILD | WS_VISIBLE | WS_BORDER | LBS_NOTIFY | WS_VSCROLL | WS_HSCROLL,
+            M, 30, CW, 168, hwnd,
+            static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_LIST))), nullptr, nullptr);
+
+        // ── Section: Actions ──────────────────────────────────────────────
+        // Row A – add steps
+        state->gamepadStepButton = CreateWindowW(L"BUTTON", L"+ Gamepad Step",
+            WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+            M, 208, 132, BH, hwnd,
+            static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_GAMEPAD_STEP))), nullptr, nullptr);
         CreateWindowW(L"STATIC",
-                      L"D-pad moves. A activates. Capture Step records the next controller chord. Menu saves. View cancels.",
-                      WS_CHILD | WS_VISIBLE,
-                      16, 344, 436, 36, hwnd, static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_HINT))), nullptr, nullptr);
+            L"Keyboard steps are auto-captured - just press the key combination.",
+            WS_CHILD | WS_VISIBLE | SS_CENTERIMAGE,
+            M + 132 + GAP, 208, CW - 132 - GAP, BH, hwnd, nullptr, nullptr, nullptr);
+
+        // Row B – manage steps
+        CreateWindowW(L"BUTTON", L"Append to Selected",
+            WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+            M, 242, 148, BH, hwnd,
+            static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_EDIT_STEP))), nullptr, nullptr);
+        CreateWindowW(L"BUTTON", L"Delete Step",
+            WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+            M + 148 + GAP, 242, 110, BH, hwnd,
+            static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_DELETE_STEP))), nullptr, nullptr);
+        CreateWindowW(L"BUTTON", L"Clear All",
+            WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+            M + 148 + GAP + 110 + GAP, 242, 90, BH, hwnd,
+            static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_CLEAR_ALL))), nullptr, nullptr);
+
+        // ── Separator ─────────────────────────────────────────────────────
+        CreateWindowW(L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_ETCHEDHORZ,
+            M, 278, CW, 2, hwnd, nullptr, nullptr, nullptr);
+
+        // ── Status ────────────────────────────────────────────────────────
+        state->status = CreateWindowW(L"STATIC", L"",
+            WS_CHILD | WS_VISIBLE,
+            M, 286, CW, 32, hwnd,
+            static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_STATUS))), nullptr, nullptr);
+
+        // ── Save / Cancel ────────────────────────────────────────────────
+        const int btnR = M + CW;
+        state->cancelButton = CreateWindowW(L"BUTTON", L"Cancel",
+            WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+            btnR - 96, 324, 96, BH, hwnd,
+            static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_CANCEL))), nullptr, nullptr);
+        state->saveButton = CreateWindowW(L"BUTTON", L"Save",
+            WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_DEFPUSHBUTTON,
+            btnR - 96 - GAP - 96, 324, 96, BH, hwnd,
+            static_cast<HMENU>(reinterpret_cast<void*>(static_cast<INT_PTR>(IDC_SAVE))), nullptr, nullptr);
+
         RenderList(state);
         SetStatus(state, state->steps.empty()
-            ? L"No steps. Use Capture Step to add one."
-            : L"Select a step or use Capture Step to add another.");
+            ? L"No steps yet. Press keyboard keys to add a key step, or click \"+ Gamepad Step\" for controller buttons."
+            : L"Press keyboard keys to add a key step, or click \"+ Gamepad Step\" for controller buttons.");
         RefreshRecorderFocus(state);
         SetTimer(hwnd, TIMER_CONTROLLER_POLL, 30, nullptr);
         return 0;
+    }
     case WM_COMMAND:
-        if (LOWORD(wp) == IDC_CAPTURE && HIWORD(wp) == BN_CLICKED) {
-            ArmControllerCapture(state, false);
+        if (LOWORD(wp) == IDC_GAMEPAD_STEP && HIWORD(wp) == BN_CLICKED) {
+            const std::wstring chord = ShowGamepadPicker(hwnd);
+            if (!chord.empty()) {
+                AddOrMergeStep(state, L"gamepad:" + chord);
+                SetStatus(state, L"Added: gamepad:" + chord);
+            }
             return 0;
         }
         if (LOWORD(wp) == IDC_EDIT_STEP && HIWORD(wp) == BN_CLICKED) {
@@ -516,14 +706,14 @@ LRESULT CALLBACK RecorderProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 auto pressed = [&](bool ControllerManager::UiNavigationState::* member) {
                     return (current.*member) && !(state->lastControllerUiState.*member);
                 };
-                if (!state->captureArmed) {
+                {
                     const HWND focus = GetFocus();
                     if (pressed(&ControllerManager::UiNavigationState::up)) {
-                        if (focus == state->captureButton || GetDlgItem(state->hwnd, IDC_EDIT_STEP) == focus ||
+                        if (focus == state->gamepadStepButton || GetDlgItem(state->hwnd, IDC_EDIT_STEP) == focus ||
                             GetDlgItem(state->hwnd, IDC_DELETE_STEP) == focus) {
                             FocusRecorderControl(state, state->list);
                         } else if (GetDlgItem(state->hwnd, IDC_CLEAR_ALL) == focus) {
-                            FocusRecorderControl(state, state->captureButton);
+                            FocusRecorderControl(state, state->gamepadStepButton);
                         } else if (state->saveButton == focus) {
                             FocusRecorderControl(state, GetDlgItem(state->hwnd, IDC_EDIT_STEP));
                         } else if (state->cancelButton == focus) {
@@ -534,8 +724,8 @@ LRESULT CALLBACK RecorderProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                     }
                     if (pressed(&ControllerManager::UiNavigationState::down)) {
                         if (focus == state->list) {
-                            FocusRecorderControl(state, state->captureButton);
-                        } else if (focus == state->captureButton) {
+                            FocusRecorderControl(state, state->gamepadStepButton);
+                        } else if (focus == state->gamepadStepButton) {
                             FocusRecorderControl(state, GetDlgItem(state->hwnd, IDC_CLEAR_ALL));
                         } else if (GetDlgItem(state->hwnd, IDC_EDIT_STEP) == focus) {
                             FocusRecorderControl(state, state->saveButton);
@@ -567,37 +757,6 @@ LRESULT CALLBACK RecorderProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 state->lastControllerUiState = current;
             }
 
-            if (state->controllerChordFn) {
-                const std::wstring chord = state->controllerChordFn();
-                if (state->captureArmed && state->waitingForChordRelease) {
-                    if (chord.empty()) {
-                        state->waitingForChordRelease = false;
-                        SetStatus(state, state->appendIndex >= 0
-                            ? L"Listening for append chord..."
-                            : L"Listening for new step chord...");
-                    }
-                } else if (!chord.empty() && state->lastControllerChord.empty()) {
-                    if (IsControllerSaveChord(chord)) {
-                        FinishRecorder(state, true);
-                        return 0;
-                    }
-                    if (IsControllerCancelChord(chord)) {
-                        FinishRecorder(state, false);
-                        return 0;
-                    }
-                    if (state->captureArmed) {
-                        AddOrMergeStep(state, chord);
-                        state->captureArmed = false;
-                        state->captureToSelected = false;
-                        state->waitingForChordRelease = false;
-                        state->appendIndex = -1;
-                        RenderList(state);
-                        SetStatus(state, L"Captured: " + chord + L". Use Capture Step for another.");
-                        RefreshRecorderFocus(state);
-                    }
-                }
-                state->lastControllerChord = chord;
-            }
         }
         return 0;
     case WM_CLOSE:
@@ -632,13 +791,11 @@ bool MacroRecorder::Record(HWND owner, std::wstring& macroText, const std::wstri
     RegisterClassW(&wc);
 
     RecorderState state{};
-    state.controllerChordFn = std::move(controllerChordFn);
+    (void)controllerChordFn;
     state.controllerUiStateFn = std::move(controllerUiStateFn);
     state.focusIndex = 1;
     if (state.controllerUiStateFn)
         state.lastControllerUiState = state.controllerUiStateFn();
-    if (state.controllerChordFn)
-        state.lastControllerChord = state.controllerChordFn();
     {
         std::wstringstream stream(initialMacroText);
         std::wstring step;
@@ -651,9 +808,9 @@ bool MacroRecorder::Record(HWND owner, std::wstring& macroText, const std::wstri
     HWND hwnd = CreateWindowExW(
         WS_EX_DLGMODALFRAME | WS_EX_TOPMOST,
         kClassName,
-        L"Capture Input",
+        L"Macro Editor",
         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
-        CW_USEDEFAULT, CW_USEDEFAULT, 486, 430,
+        CW_USEDEFAULT, CW_USEDEFAULT, 556, 400,
         owner, nullptr, wc.hInstance, &state);
     if (!hwnd)
         return false;

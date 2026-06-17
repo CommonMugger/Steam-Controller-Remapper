@@ -49,31 +49,6 @@ struct ViiperApi {
 std::mutex g_notificationMutex;
 std::unordered_map<std::uintptr_t, VirtualController*> g_targetOwners;
 
-constexpr uint16_t XUSB_GAMEPAD_DPAD_UP          = 0x0001u;
-constexpr uint16_t XUSB_GAMEPAD_DPAD_DOWN        = 0x0002u;
-constexpr uint16_t XUSB_GAMEPAD_DPAD_LEFT        = 0x0004u;
-constexpr uint16_t XUSB_GAMEPAD_DPAD_RIGHT       = 0x0008u;
-constexpr uint16_t XUSB_GAMEPAD_START            = 0x0010u;
-constexpr uint16_t XUSB_GAMEPAD_BACK             = 0x0020u;
-constexpr uint16_t XUSB_GAMEPAD_LEFT_THUMB       = 0x0040u;
-constexpr uint16_t XUSB_GAMEPAD_RIGHT_THUMB      = 0x0080u;
-constexpr uint16_t XUSB_GAMEPAD_LEFT_SHOULDER    = 0x0100u;
-constexpr uint16_t XUSB_GAMEPAD_RIGHT_SHOULDER   = 0x0200u;
-constexpr uint16_t XUSB_GAMEPAD_GUIDE            = 0x0400u;
-constexpr uint16_t XUSB_GAMEPAD_A                = 0x1000u;
-constexpr uint16_t XUSB_GAMEPAD_B                = 0x2000u;
-constexpr uint16_t XUSB_GAMEPAD_X                = 0x4000u;
-constexpr uint16_t XUSB_GAMEPAD_Y                = 0x8000u;
-
-struct XusbReport {
-    uint16_t buttons = 0;
-    uint8_t leftTrigger = 0;
-    uint8_t rightTrigger = 0;
-    int16_t leftX = 0;
-    int16_t leftY = 0;
-    int16_t rightX = 0;
-    int16_t rightY = 0;
-};
 
 template <typename T>
 bool LoadProc(HMODULE module, const char* name, T& fn) {
@@ -599,6 +574,16 @@ void VirtualController::Update(const uint8_t* buf, size_t n, const StandardGamep
 
     ApplyAllButtonRemaps(xusb, buf, n, standardState, m_paddleMappings, m_paddleActions, m_prevPaddlePressed);
 
+    {
+        std::lock_guard<std::mutex> lock(m_macroMutex);
+        m_lastBaseXusbReport = xusb;
+        xusb.buttons |= m_macroGamepadButtons;
+    }
+
+    SendXusbReport(xusb);
+}
+
+void VirtualController::SendXusbReport(const XusbReport& xusb) {
     ViiperApi& api = GetViiperApi();
     if (m_mode == EmulationMode::DualShock4) {
         DS4DeviceState state = TranslateDs4(xusb);
@@ -732,6 +717,32 @@ void VirtualController::KeyChordUp(const std::vector<uint16_t>& vkChord) {
     state.Modifiers = m_kbModifiers;
     memcpy(state.KeyBitmap, m_kbBitmap.data(), sizeof(state.KeyBitmap));
     api.SetKeyboardDeviceStateFn(m_keyboardHandle, state);
+}
+
+void VirtualController::GamepadMacroDown(const std::vector<PaddleMapping>& mappings) {
+    XusbReport report;
+    {
+        std::lock_guard<std::mutex> lock(m_macroMutex);
+        XusbReport tmp{};
+        for (PaddleMapping m : mappings) ApplyPaddleMapping(tmp, m);
+        m_macroGamepadButtons |= tmp.buttons;
+        report = m_lastBaseXusbReport;
+        report.buttons |= m_macroGamepadButtons;
+    }
+    SendXusbReport(report);
+}
+
+void VirtualController::GamepadMacroUp(const std::vector<PaddleMapping>& mappings) {
+    XusbReport report;
+    {
+        std::lock_guard<std::mutex> lock(m_macroMutex);
+        XusbReport tmp{};
+        for (PaddleMapping m : mappings) ApplyPaddleMapping(tmp, m);
+        m_macroGamepadButtons &= ~tmp.buttons;
+        report = m_lastBaseXusbReport;
+        report.buttons |= m_macroGamepadButtons;
+    }
+    SendXusbReport(report);
 }
 
 void VirtualController::UpdateMouse(int16_t dx, int16_t dy, uint8_t buttons) {

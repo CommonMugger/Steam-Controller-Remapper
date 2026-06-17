@@ -1,5 +1,5 @@
 #define MyAppName "Steam Controller Remapper"
-#define MyAppVersion "1.6.0"
+#define MyAppVersion "1.7.0"
 #define MyAppPublisher "CommonMugger"
 #define MyAppExeName "Steam Controller Remapper.exe"
 #define AppRegKey "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{8F3A1B2C-4D5E-6F7A-8B9C-0D1E2F3A4B5C}_is1"
@@ -107,9 +107,11 @@ end;
 // installed and the installer would otherwise prompt for a reboot every run.
 function NeedsUsbIp(): Boolean;
 begin
+  // usbip-win2 0.9.x registers usbip2_ude (UDE bus driver) and usbip2_filter
   Result := not (
-    RegKeyExists(HKEY_LOCAL_MACHINE, 'SYSTEM\CurrentControlSet\Services\usbip_vhci') or
-    RegKeyExists(HKEY_LOCAL_MACHINE, 'SYSTEM\CurrentControlSet\Services\usbip2_vhci')
+    RegKeyExists(HKEY_LOCAL_MACHINE, 'SYSTEM\CurrentControlSet\Services\usbip2_ude') or
+    RegKeyExists(HKEY_LOCAL_MACHINE, 'SYSTEM\CurrentControlSet\Services\usbip2_filter') or
+    RegKeyExists(HKEY_LOCAL_MACHINE, 'SYSTEM\CurrentControlSet\Services\mausbip')
   );
 end;
 

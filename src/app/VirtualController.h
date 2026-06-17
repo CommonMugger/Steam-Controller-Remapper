@@ -7,6 +7,32 @@
 #include <mutex>
 #include <vector>
 
+constexpr uint16_t XUSB_GAMEPAD_DPAD_UP          = 0x0001u;
+constexpr uint16_t XUSB_GAMEPAD_DPAD_DOWN        = 0x0002u;
+constexpr uint16_t XUSB_GAMEPAD_DPAD_LEFT        = 0x0004u;
+constexpr uint16_t XUSB_GAMEPAD_DPAD_RIGHT       = 0x0008u;
+constexpr uint16_t XUSB_GAMEPAD_START            = 0x0010u;
+constexpr uint16_t XUSB_GAMEPAD_BACK             = 0x0020u;
+constexpr uint16_t XUSB_GAMEPAD_LEFT_THUMB       = 0x0040u;
+constexpr uint16_t XUSB_GAMEPAD_RIGHT_THUMB      = 0x0080u;
+constexpr uint16_t XUSB_GAMEPAD_LEFT_SHOULDER    = 0x0100u;
+constexpr uint16_t XUSB_GAMEPAD_RIGHT_SHOULDER   = 0x0200u;
+constexpr uint16_t XUSB_GAMEPAD_GUIDE            = 0x0400u;
+constexpr uint16_t XUSB_GAMEPAD_A                = 0x1000u;
+constexpr uint16_t XUSB_GAMEPAD_B                = 0x2000u;
+constexpr uint16_t XUSB_GAMEPAD_X                = 0x4000u;
+constexpr uint16_t XUSB_GAMEPAD_Y                = 0x8000u;
+
+struct XusbReport {
+    uint16_t buttons = 0;
+    uint8_t  leftTrigger = 0;
+    uint8_t  rightTrigger = 0;
+    int16_t  leftX = 0;
+    int16_t  leftY = 0;
+    int16_t  rightX = 0;
+    int16_t  rightY = 0;
+};
+
 enum class EmulationMode {
     Xbox360 = 0,
     DualShock4 = 1,
@@ -140,6 +166,8 @@ public:
     void UpdateMouse(int16_t dx, int16_t dy, uint8_t buttons);
     void KeyChordDown(const std::vector<uint16_t>& vkChord);
     void KeyChordUp(const std::vector<uint16_t>& vkChord);
+    void GamepadMacroDown(const std::vector<PaddleMapping>& mappings);
+    void GamepadMacroUp(const std::vector<PaddleMapping>& mappings);
 
 private:
     static void ViiperXboxRumbleCallback(std::uintptr_t handle, uint8_t leftMotor, uint8_t rightMotor);
@@ -166,4 +194,9 @@ private:
     uint8_t                    m_kbModifiers = 0;
     std::array<uint8_t, 32>    m_kbBitmap{};
     void ApplyKeyVk(uint16_t vk, bool down);
+    mutable std::mutex         m_macroMutex;
+    uint16_t                   m_macroGamepadButtons = 0;
+    XusbReport                 m_lastBaseXusbReport{};
+
+    void SendXusbReport(const XusbReport& xusb);
 };
