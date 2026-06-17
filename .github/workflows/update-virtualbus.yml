@@ -100,8 +100,8 @@ jobs:
             | sed 's#.*/##')"
           echo "number=$NUMBER" >> "$GITHUB_OUTPUT"
 
-      - name: Enable auto-merge for patch/minor updates
-        if: steps.deps.outputs.changed == 'true' && (steps.deps.outputs.change_kind == 'patch' || steps.deps.outputs.change_kind == 'minor')
+      - name: Enable auto-merge
+        if: steps.deps.outputs.changed == 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
