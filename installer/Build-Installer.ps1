@@ -210,5 +210,5 @@ Write-Step 'Compiling Inno Setup installer...'
 & $iscc (Join-Path $scriptRoot 'SteamControllerRemapper.iss')
 if ($LASTEXITCODE -ne 0) { throw 'ISCC compilation failed.' }
 
-$setupExe = Join-Path $outputDir 'SteamControllerRemapper-1.7.1-Setup.exe'
+$setupExe = Join-Path $outputDir 'SteamControllerRemapper-1.7.2-Setup.exe'
 Write-Step "Installer ready: $setupExe"

@@ -1114,7 +1114,7 @@ void TrayApp::CheckForUpdates(bool userInitiated) {
                             MessageBoxW(nullptr,
                                         L"The installer has been downloaded and selected in File Explorer.\n\n"
                                         L"Double-click \"SteamControllerRemapper-Setup.exe\" to update. "
-                                        L"Windows may ask you to confirm — click \"Run anyway\" if prompted.",
+                                        L"Windows may ask you to confirm -- click \"Run anyway\" if prompted.",
                                         APP_NAME,
                                         MB_OK | MB_ICONINFORMATION);
                         }
