@@ -39,7 +39,7 @@ static constexpr char UPDATE_ASSET_SUFFIX[] = "-Setup.exe";
 #ifdef SCR_APP_VERSION
 static constexpr wchar_t APP_VERSION[] = SCR_WIDEN(SCR_APP_VERSION);
 #else
-static constexpr wchar_t APP_VERSION[] = L"1.7.2";
+static constexpr wchar_t APP_VERSION[] = L"1.7.3";
 #endif
 
 static bool HasRunEntry(const wchar_t* name) {

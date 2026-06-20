@@ -71,7 +71,8 @@ void TrackpadMouse::Update(const uint8_t* buf, size_t n, const StandardGamepadSt
 
         if (touching && m_touching) {
             const int dx = static_cast<int>(x - m_prevX);
-            const int dy = -static_cast<int>(y - m_prevY);
+            // SDL finger Y is 0=top..1=bottom (screen convention); no negation needed
+            const int dy = static_cast<int>(y - m_prevY);
             if (dx != 0 || dy != 0)
                 SendMove(static_cast<int16_t>(dx * SENSITIVITY), static_cast<int16_t>(dy * SENSITIVITY));
         }
