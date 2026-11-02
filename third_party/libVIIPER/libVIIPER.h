@@ -165,6 +165,10 @@ typedef uintptr_t DS4DeviceHandle;
 #define DS4_DPAD_UP_LEFT   0x07u
 #define DS4_DPAD_NEUTRAL   0x08u
 
+#define DS4_OUTPUT_UPDATE_RUMBLE 0x01u
+#define DS4_OUTPUT_UPDATE_LED    0x02u
+#define DS4_OUTPUT_UPDATE_FLASH    0x04u
+
 typedef struct {
 	int8_t   LX;
 	int8_t   LY;
@@ -196,10 +200,10 @@ typedef struct {
 	double      BatteryVoltage;     // 0 = use default
 } DS4MetaState;
 
-typedef void (*DS4OutputCallback)(DS4DeviceHandle handle, uint8_t rumbleSmall, uint8_t rumbleLarge, uint8_t ledRed, uint8_t ledGreen, uint8_t ledBlue, uint8_t flashOn, uint8_t flashOff);
+typedef void (*DS4OutputCallback)(DS4DeviceHandle handle,uint8_t updateFlags, uint8_t rumbleSmall, uint8_t rumbleLarge, uint8_t ledRed, uint8_t ledGreen, uint8_t ledBlue, uint8_t flashOn, uint8_t flashOff);
 
-static void viiper_call_ds4_output(DS4OutputCallback fn, DS4DeviceHandle handle, uint8_t rumbleSmall, uint8_t rumbleLarge, uint8_t ledRed, uint8_t ledGreen, uint8_t ledBlue, uint8_t flashOn, uint8_t flashOff) {
-	fn(handle, rumbleSmall, rumbleLarge, ledRed, ledGreen, ledBlue, flashOn, flashOff);
+static void viiper_call_ds4_output(DS4OutputCallback fn, DS4DeviceHandle handle,uint8_t updateFlags, uint8_t rumbleSmall, uint8_t rumbleLarge, uint8_t ledRed, uint8_t ledGreen, uint8_t ledBlue, uint8_t flashOn, uint8_t flashOff) {
+	fn(handle, updateFlags, rumbleSmall, rumbleLarge, ledRed, ledGreen, ledBlue, flashOn, flashOff);
 }
 
 
@@ -666,7 +670,7 @@ extern GoUint8 SetDS4DeviceState(DS4DeviceHandle handle, DS4DeviceState state);
 /*
  * SetDS4OutputCallback sets a callback to be invoked when the host sends output (rumble/LED) commands to the device.
  * @param handle Handle to the DS4 device.
- * @param callback Callback receiving rumbleSmall, rumbleLarge, ledRed, ledGreen, ledBlue, flashOn, flashOff. Pass NULL to clear.
+ * @param callback Callback receiving updateFlags, rumbleSmall, rumbleLarge, ledRed, ledGreen, ledBlue, flashOn, flashOff. Pass NULL to clear.
  * 
  */
 extern GoUint8 SetDS4OutputCallback(DS4DeviceHandle handle, DS4OutputCallback cb);
